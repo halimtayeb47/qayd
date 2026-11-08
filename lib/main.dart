@@ -18,52 +18,70 @@ void main() async {
   final storageService = StorageService();
   await storageService.init();
 
-  // Initialize application services
-  final whisperService = GroqWhisperService();
-  final summaryService = GeminiSummaryService();
-  final recordingService = AudioRecordingService();
-  final pickerService = AudioPickerService();
-
   runApp(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider<QaydProvider>(
-          create: (_) => QaydProvider(
-            storageService: storageService,
-            whisperService: whisperService,
-            summaryService: summaryService,
-            recordingService: recordingService,
-            pickerService: pickerService,
-          )..loadInitialData(),
-        ),
-      ],
-      child: const QaydApp(),
+    QaydApp(
+      storageService: storageService,
+      whisperService: GroqWhisperService(),
+      summaryService: GeminiSummaryService(),
+      recordingService: AudioRecordingService(),
+      pickerService: AudioPickerService(),
     ),
   );
 }
 
 class QaydApp extends StatelessWidget {
-  const QaydApp({super.key});
+  final StorageService? storageService;
+  final GroqWhisperService? whisperService;
+  final GeminiSummaryService? summaryService;
+  final AudioRecordingService? recordingService;
+  final AudioPickerService? pickerService;
+
+  const QaydApp({
+    super.key,
+    this.storageService,
+    this.whisperService,
+    this.summaryService,
+    this.recordingService,
+    this.pickerService,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Qayd - قَيْد',
-      debugShowCheckedModeBanner: false,
-      theme: QaydTheme.light,
-      darkTheme: QaydTheme.dark,
-      themeMode: ThemeMode.system,
-      // Bilingual localization support (Arabic + English with RTL)
-      supportedLocales: const [
-        Locale('ar'),
-        Locale('en'),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider<QaydProvider>(
+          create: (_) => QaydProvider(
+            storageService: storageService ?? StorageService(),
+            whisperService: whisperService ?? GroqWhisperService(),
+            summaryService: summaryService ?? GeminiSummaryService(),
+            recordingService: recordingService ?? AudioRecordingService(),
+            pickerService: pickerService ?? AudioPickerService(),
+          )..loadInitialData(),
+        ),
       ],
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      home: const HomeScreen(),
+      child: Consumer<QaydProvider>(
+        builder: (context, provider, _) {
+          return MaterialApp(
+            title: 'Qayd - قَيْد',
+            debugShowCheckedModeBanner: false,
+            theme: QaydTheme.light,
+            darkTheme: QaydTheme.dark,
+            themeMode: provider.themeMode,
+            locale: provider.currentLocale,
+            // Bilingual localization support (Arabic + English with RTL)
+            supportedLocales: const [
+              Locale('en'),
+              Locale('ar'),
+            ],
+            localizationsDelegates: const [
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
+            home: const HomeScreen(),
+          );
+        },
+      ),
     );
   }
 }

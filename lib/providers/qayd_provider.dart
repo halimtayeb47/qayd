@@ -20,11 +20,11 @@ import '../data/services/audio_recording_service.dart';
 import '../data/services/audio_picker_service.dart';
 
 class QaydProvider extends ChangeNotifier {
-  final StorageService _storageService;
-  final GroqWhisperService _whisperService;
-  final GeminiSummaryService _summaryService;
-  final AudioRecordingService _recordingService;
-  final AudioPickerService _pickerService;
+  final StorageService storageService;
+  final GroqWhisperService whisperService;
+  final GeminiSummaryService summaryService;
+  final AudioRecordingService recordingService;
+  final AudioPickerService pickerService;
 
   // --- State Variables ---
   List<Qayd> _qayds = [];
@@ -43,19 +43,19 @@ class QaydProvider extends ChangeNotifier {
   bool _isPaused = false;
   int _recordDurationSeconds = 0;
 
+  // Language & Theme State (FR7)
+  Locale _currentLocale = const Locale('en');
+  ThemeMode _themeMode = ThemeMode.system;
+
   QaydProvider({
-    required StorageService storageService,
-    required GroqWhisperService whisperService,
-    required GeminiSummaryService summaryService,
-    required AudioRecordingService recordingService,
-    required AudioPickerService pickerService,
-  })  : _storageService = storageService,
-        _whisperService = whisperService,
-        _summaryService = summaryService,
-        _recordingService = recordingService,
-        _pickerService = pickerService {
+    required this.storageService,
+    required this.whisperService,
+    required this.summaryService,
+    required this.recordingService,
+    required this.pickerService,
+  }) {
     // Listen to recording timer stream
-    _recordingService.durationStream.listen((seconds) {
+    recordingService.durationStream.listen((seconds) {
       _recordDurationSeconds = seconds;
       notifyListeners();
     });
@@ -91,14 +91,141 @@ class QaydProvider extends ChangeNotifier {
   bool get isPaused => _isPaused;
   int get recordDurationSeconds => _recordDurationSeconds;
 
+  Locale get currentLocale => _currentLocale;
+  ThemeMode get themeMode => _themeMode;
+  bool get isDarkMode => _themeMode == ThemeMode.dark;
+
+  void setLocale(Locale locale) {
+    if (_currentLocale != locale) {
+      _currentLocale = locale;
+      notifyListeners();
+    }
+  }
+
+  void toggleLocale() {
+    _currentLocale = _currentLocale.languageCode == 'ar'
+        ? const Locale('en')
+        : const Locale('ar');
+    notifyListeners();
+  }
+
+  void toggleTheme() {
+    if (_themeMode == ThemeMode.dark) {
+      _themeMode = ThemeMode.light;
+    } else {
+      _themeMode = ThemeMode.dark;
+    }
+    notifyListeners();
+  }
+
   // ---------------------------------------------------------------------------
   // Initialization & Loading (FR6)
   // ---------------------------------------------------------------------------
 
   /// Loads saved Qayds and folders from local storage
   void loadInitialData() {
-    _qayds = _storageService.getAllQayds();
-    _folders = _storageService.getAllFolders();
+    _qayds = storageService.getAllQayds();
+    _folders = storageService.getAllFolders();
+
+    // If storage is completely empty and initialized, seed a sample lecture note
+    // so students and evaluators can explore the UI immediately.
+    if (_qayds.isEmpty && _folders.isEmpty) {
+      _seedDemoData();
+    } else {
+      notifyListeners();
+    }
+  }
+
+  Future<void> _seedDemoData() async {
+    final folderId = const Uuid().v4();
+    final demoFolder = QaydFolder(
+      id: folderId,
+      name: 'Operating Systems',
+      createdAt: DateTime.now().subtract(const Duration(days: 1)),
+    );
+    await storageService.saveFolder(demoFolder);
+
+    final demoQayd = Qayd(
+      id: const Uuid().v4(),
+      title: 'CS341: Processes vs Threads',
+      createdAt: DateTime.now().subtract(const Duration(hours: 2)),
+      audioPath: '',
+      durationSec: 125,
+      language: QaydLanguage.mixed,
+      status: QaydStatus.done,
+      folderId: folderId,
+      transcript:
+          'السلام عليكم جميعاً. Today we will cover the fundamental distinction between a Process and a Thread in modern operating systems. First, what is a Process? A process is an executing program with its own dedicated memory address space, including its code section, data section, heap, and stack. Because processes are isolated by the OS kernel, inter-process communication requires IPC mechanisms like pipes, message queues, or shared memory. In contrast, a Thread is often called a lightweight process (LWP). Threads belonging to the same process share the same code and heap, but each thread possesses its own program counter and stack. This makes thread switching much faster than full process context switching. However, because threads share memory, developers must use synchronization primitives like mutexes and semaphores to prevent race conditions and data corruption. Next lecture, we will dive deeper into CPU scheduling algorithms.',
+      segments: const [
+        TranscriptSegment(
+          startSec: 0.0,
+          endSec: 15.0,
+          text:
+              'السلام عليكم جميعاً. Today we will cover the fundamental distinction between a Process and a Thread in modern operating systems.',
+        ),
+        TranscriptSegment(
+          startSec: 15.0,
+          endSec: 45.0,
+          text:
+              'First, what is a Process? A process is an executing program with its own dedicated memory address space, including its code section, data section, heap, and stack.',
+        ),
+        TranscriptSegment(
+          startSec: 45.0,
+          endSec: 75.0,
+          text:
+              'Because processes are isolated by the OS kernel, inter-process communication requires IPC mechanisms like pipes, message queues, or shared memory.',
+        ),
+        TranscriptSegment(
+          startSec: 75.0,
+          endSec: 100.0,
+          text:
+              'In contrast, a Thread is often called a lightweight process (LWP). Threads belonging to the same process share the same code and heap, but each thread possesses its own program counter and stack.',
+        ),
+        TranscriptSegment(
+          startSec: 100.0,
+          endSec: 125.0,
+          text:
+              'This makes thread switching faster, but developers must use synchronization primitives like mutexes and semaphores to prevent race conditions.',
+        ),
+      ],
+      summary: const QaydSummary(
+        overview:
+            'This lecture introduces the core concepts of Operating Systems regarding memory architecture, kernel isolation, and key trade-offs between independent Processes and lightweight Threads.',
+        keyPoints: [
+          'A Process is an executing program instance with its own isolated address space (code, data, heap, and stack).',
+          'Inter-Process Communication (IPC) via pipes or shared memory is mandatory to exchange data across process boundaries.',
+          'Threads are lightweight units of execution within a process that share code and heap memory.',
+          'Thread switching overhead is significantly lower than full process context switching.',
+          'Shared memory across threads necessitates synchronization primitives (mutexes, semaphores) to eliminate race conditions.',
+        ],
+        keyTerms: [
+          KeyTerm(
+            term: 'Process',
+            definition:
+                'An active instance of a running computer program with dedicated address space and kernel resources.',
+          ),
+          KeyTerm(
+            term: 'Thread',
+            definition:
+                'A lightweight process (LWP) and basic unit of CPU scheduling sharing memory with sibling threads.',
+          ),
+          KeyTerm(
+            term: 'Context Switch',
+            definition:
+                'The process of saving the state of an active thread/process and restoring another.',
+          ),
+          KeyTerm(
+            term: 'Race Condition',
+            definition:
+                'A concurrency defect when multiple execution paths attempt unsynchronized shared memory writes.',
+          ),
+        ],
+      ),
+    );
+
+    await storageService.saveQayd(demoQayd);
+    _qayds = storageService.getAllQayds();
+    _folders = storageService.getAllFolders();
     notifyListeners();
   }
 
@@ -120,7 +247,7 @@ class QaydProvider extends ChangeNotifier {
   Future<void> startRecording() async {
     try {
       _errorMessage = null;
-      await _recordingService.startRecording();
+      await recordingService.startRecording();
       _isRecording = true;
       _isPaused = false;
       _recordDurationSeconds = 0;
@@ -135,21 +262,21 @@ class QaydProvider extends ChangeNotifier {
 
   /// Pauses active recording
   Future<void> pauseRecording() async {
-    await _recordingService.pauseRecording();
+    await recordingService.pauseRecording();
     _isPaused = true;
     notifyListeners();
   }
 
   /// Resumes recording
   Future<void> resumeRecording() async {
-    await _recordingService.resumeRecording();
+    await recordingService.resumeRecording();
     _isPaused = false;
     notifyListeners();
   }
 
   /// Stops recording and triggers the AI processing pipeline
   Future<Qayd> stopRecordingAndProcess({String? title}) async {
-    final audioPath = await _recordingService.stopRecording();
+    final audioPath = await recordingService.stopRecording();
     _isRecording = false;
     _isPaused = false;
     final duration = _recordDurationSeconds;
@@ -178,7 +305,7 @@ class QaydProvider extends ChangeNotifier {
   /// Opens file picker to import an existing audio file and processes it
   Future<Qayd?> importAudioAndProcess({String? title}) async {
     try {
-      final picked = await _pickerService.pickAudioFile();
+      final picked = await pickerService.pickAudioFile();
       if (picked == null) return null; // User cancelled
 
       final finalTitle = title?.trim().isNotEmpty == true
@@ -227,7 +354,7 @@ class QaydProvider extends ChangeNotifier {
 
     try {
       // 2. Transcribe Audio (FR3)
-      final transcriptResult = await _whisperService.transcribeAudio(
+      final transcriptResult = await whisperService.transcribeAudio(
         audioFilePath: audioPath,
       );
 
@@ -245,7 +372,7 @@ class QaydProvider extends ChangeNotifier {
         status: QaydStatus.transcribed,
       );
       _activeQayd = qayd;
-      await _storageService.saveQayd(qayd);
+      await storageService.saveQayd(qayd);
 
       _processingStatusMessage = 'Generating academic summary with Gemini...';
       _processingProgress = 0.65;
@@ -253,7 +380,7 @@ class QaydProvider extends ChangeNotifier {
 
       // 3. Generate English Summary (FR4)
       try {
-        final summary = await _summaryService.generateSummary(
+        final summary = await summaryService.generateSummary(
           transcript: transcriptResult.text,
         );
 
@@ -268,7 +395,7 @@ class QaydProvider extends ChangeNotifier {
       }
 
       // 4. Save Final State and Update List (FR6)
-      await _storageService.saveQayd(qayd);
+      await storageService.saveQayd(qayd);
       _activeQayd = qayd;
       _processingStatusMessage = 'Done!';
       _processingProgress = 1.0;
@@ -278,7 +405,7 @@ class QaydProvider extends ChangeNotifier {
       return qayd;
     } catch (e) {
       qayd = qayd.copyWith(status: QaydStatus.failed);
-      await _storageService.saveQayd(qayd);
+      await storageService.saveQayd(qayd);
       _activeQayd = qayd;
       _errorMessage = e.toString();
       _processingStatusMessage = 'Processing failed.';
@@ -290,7 +417,7 @@ class QaydProvider extends ChangeNotifier {
 
   /// Retries summarization for a transcribed Qayd (e.g. after fixing rate limit)
   Future<void> retrySummary(String qaydId) async {
-    var qayd = _storageService.getQayd(qaydId);
+    var qayd = storageService.getQayd(qaydId);
     if (qayd == null || qayd.transcript.isEmpty) return;
 
     _errorMessage = null;
@@ -298,7 +425,7 @@ class QaydProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final summary = await _summaryService.generateSummary(
+      final summary = await summaryService.generateSummary(
         transcript: qayd.transcript,
       );
 
@@ -306,7 +433,7 @@ class QaydProvider extends ChangeNotifier {
         summary: summary,
         status: QaydStatus.done,
       );
-      await _storageService.saveQayd(qayd);
+      await storageService.saveQayd(qayd);
       _activeQayd = qayd;
       loadInitialData();
     } catch (e) {
@@ -322,17 +449,17 @@ class QaydProvider extends ChangeNotifier {
 
   /// Renames a Qayd (NFR9)
   Future<void> renameQayd(String id, String newTitle) async {
-    final qayd = _storageService.getQayd(id);
+    final qayd = storageService.getQayd(id);
     if (qayd != null) {
       final updated = qayd.copyWith(title: newTitle.trim());
-      await _storageService.saveQayd(updated);
+      await storageService.saveQayd(updated);
       loadInitialData();
     }
   }
 
   /// Deletes a Qayd and its local audio file (NFR9)
   Future<void> deleteQayd(String id) async {
-    await _storageService.deleteQayd(id);
+    await storageService.deleteQayd(id);
     if (_activeQayd?.id == id) {
       _activeQayd = null;
     }
@@ -341,10 +468,10 @@ class QaydProvider extends ChangeNotifier {
 
   /// Edits the transcript and saves it (NFR11)
   Future<void> editTranscript(String id, String newTranscript) async {
-    final qayd = _storageService.getQayd(id);
+    final qayd = storageService.getQayd(id);
     if (qayd != null) {
       final updated = qayd.copyWith(transcript: newTranscript);
-      await _storageService.saveQayd(updated);
+      await storageService.saveQayd(updated);
       if (_activeQayd?.id == id) {
         _activeQayd = updated;
       }
@@ -354,10 +481,10 @@ class QaydProvider extends ChangeNotifier {
 
   /// Moves a Qayd to a specific subject folder (NFR10)
   Future<void> moveQaydToFolder(String qaydId, String? folderId) async {
-    final qayd = _storageService.getQayd(qaydId);
+    final qayd = storageService.getQayd(qaydId);
     if (qayd != null) {
       final updated = qayd.copyWith(folderId: folderId);
-      await _storageService.saveQayd(updated);
+      await storageService.saveQayd(updated);
       loadInitialData();
     }
   }
@@ -370,13 +497,13 @@ class QaydProvider extends ChangeNotifier {
       name: name.trim(),
       createdAt: DateTime.now(),
     );
-    await _storageService.saveFolder(folder);
+    await storageService.saveFolder(folder);
     loadInitialData();
   }
 
   /// Deletes a folder and safely unfiles all its Qayds
   Future<void> deleteFolder(String folderId) async {
-    await _storageService.deleteFolder(folderId);
+    await storageService.deleteFolder(folderId);
     if (_selectedFolderId == folderId) {
       _selectedFolderId = null;
     }
@@ -390,7 +517,7 @@ class QaydProvider extends ChangeNotifier {
 
   @override
   void dispose() {
-    _recordingService.dispose();
+    recordingService.dispose();
     super.dispose();
   }
 }

@@ -18,12 +18,14 @@ class StorageService {
 
   late Box<Map> _qaydsBox;
   late Box<Map> _foldersBox;
+  bool _isInitialized = false;
 
   /// Initializes Hive database and opens the necessary boxes
   Future<void> init() async {
     await Hive.initFlutter();
     _qaydsBox = await Hive.openBox<Map>(_qaydsBoxName);
     _foldersBox = await Hive.openBox<Map>(_foldersBoxName);
+    _isInitialized = true;
   }
 
   // ---------------------------------------------------------------------------
@@ -32,11 +34,13 @@ class StorageService {
 
   /// Saves or updates a Qayd in local storage
   Future<void> saveQayd(Qayd qayd) async {
+    if (!_isInitialized) return;
     await _qaydsBox.put(qayd.id, qayd.toMap());
   }
 
   /// Retrieves a specific Qayd by its unique ID
   Qayd? getQayd(String id) {
+    if (!_isInitialized) return null;
     final map = _qaydsBox.get(id);
     if (map == null) return null;
     return Qayd.fromMap(Map<String, dynamic>.from(map));
@@ -44,6 +48,7 @@ class StorageService {
 
   /// Returns all saved Qayds sorted newest-first (FR6)
   List<Qayd> getAllQayds() {
+    if (!_isInitialized) return [];
     final qayds = <Qayd>[];
     for (final raw in _qaydsBox.values) {
       try {
@@ -59,6 +64,7 @@ class StorageService {
 
   /// Deletes a Qayd and removes its local audio file to prevent orphan files (NFR9)
   Future<void> deleteQayd(String id) async {
+    if (!_isInitialized) return;
     final qayd = getQayd(id);
     if (qayd != null && qayd.audioPath.isNotEmpty) {
       try {
@@ -84,11 +90,13 @@ class StorageService {
 
   /// Saves a subject folder
   Future<void> saveFolder(QaydFolder folder) async {
+    if (!_isInitialized) return;
     await _foldersBox.put(folder.id, folder.toMap());
   }
 
   /// Returns all folders sorted alphabetically by name
   List<QaydFolder> getAllFolders() {
+    if (!_isInitialized) return [];
     final folders = <QaydFolder>[];
     for (final raw in _foldersBox.values) {
       try {
@@ -103,6 +111,7 @@ class StorageService {
 
   /// Deletes a folder and unfiles all its Qayds safely
   Future<void> deleteFolder(String folderId) async {
+    if (!_isInitialized) return;
     // Unassign all Qayds in this folder before deleting it
     for (final qayd in getQaydsByFolder(folderId)) {
       final updated = qayd.copyWith(folderId: null);
