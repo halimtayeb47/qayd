@@ -1,6 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Required permissions for Qayd audio recording and API processing -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <application
-        android:label="qayd"
+        android:label="Qayd - قَيْد"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
