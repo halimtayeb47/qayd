@@ -30,17 +30,16 @@ class AudioPickerService {
 
   /// Prompts user to pick an audio file and copies it into app storage
   Future<PickedAudioResult?> pickAudioFile() async {
-    final result = await FilePicker.platform.pickFiles(
+    final files = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: allowedExtensions,
-      allowMultiple: false,
     );
 
-    if (result == null || result.files.isEmpty) {
+    if (files.isEmpty) {
       return null; // User canceled the picker
     }
 
-    final platformFile = result.files.first;
+    final platformFile = files.first;
     final sourcePath = platformFile.path;
 
     if (sourcePath == null) {

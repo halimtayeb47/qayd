@@ -12,7 +12,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
 class AudioRecordingService {
-  final AudioRecorder _audioRecorder;
+  AudioRecorder? _audioRecorder;
 
   Timer? _timer;
   int _elapsedSeconds = 0;
@@ -22,15 +22,19 @@ class AudioRecordingService {
   final _durationController = StreamController<int>.broadcast();
   Stream<int> get durationStream => _durationController.stream;
 
-  AudioRecordingService({AudioRecorder? audioRecorder})
-      : _audioRecorder = audioRecorder ?? AudioRecorder();
+  AudioRecordingService({AudioRecorder? audioRecorder}) {
+    _audioRecorder = audioRecorder;
+  }
+
+  /// Lazy initializer for the platform audio recorder
+  AudioRecorder get recorder => _audioRecorder ??= AudioRecorder();
 
   int get elapsedSeconds => _elapsedSeconds;
   String? get currentFilePath => _currentFilePath;
 
   /// Checks and requests microphone permission
   Future<bool> hasPermission() async {
-    return await _audioRecorder.hasPermission();
+    return await recorder.hasPermission();
   }
 
   /// Starts a new recording session
@@ -59,7 +63,7 @@ class AudioRecordingService {
       bitRate: 32000,
     );
 
-    await _audioRecorder.start(config, path: filePath);
+    await recorder.start(config, path: filePath);
 
     // Reset and start elapsed timer
     _elapsedSeconds = 0;
@@ -74,16 +78,16 @@ class AudioRecordingService {
 
   /// Pauses the current recording
   Future<void> pauseRecording() async {
-    if (await _audioRecorder.isRecording()) {
-      await _audioRecorder.pause();
+    if (await isRecording()) {
+      await recorder.pause();
       _timer?.cancel();
     }
   }
 
   /// Resumes recording after pause
   Future<void> resumeRecording() async {
-    if (await _audioRecorder.isPaused()) {
-      await _audioRecorder.resume();
+    if (await isPaused()) {
+      await recorder.resume();
       _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
         _elapsedSeconds++;
         _durationController.add(_elapsedSeconds);
@@ -96,24 +100,26 @@ class AudioRecordingService {
     _timer?.cancel();
     _timer = null;
 
-    final path = await _audioRecorder.stop();
+    final path = await _audioRecorder?.stop();
     return path ?? _currentFilePath;
   }
 
   /// Checks if actively recording
   Future<bool> isRecording() async {
-    return await _audioRecorder.isRecording();
+    if (_audioRecorder == null) return false;
+    return await _audioRecorder!.isRecording();
   }
 
   /// Checks if recording is paused
   Future<bool> isPaused() async {
-    return await _audioRecorder.isPaused();
+    if (_audioRecorder == null) return false;
+    return await _audioRecorder!.isPaused();
   }
 
   /// Disposes internal resources
   void dispose() {
     _timer?.cancel();
     _durationController.close();
-    _audioRecorder.dispose();
+    _audioRecorder?.dispose();
   }
 }

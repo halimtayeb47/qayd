@@ -19,9 +19,9 @@ dependencies:
   provider: ^6.1.2
 
   # Audio & Files
-  record: ^5.2.0
+  record: ^7.1.1
   just_audio: ^0.9.42
-  file_picker: ^8.1.4
+  file_picker: ^13.3.2
   path_provider: ^2.1.5
 
   # Network & API

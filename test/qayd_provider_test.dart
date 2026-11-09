@@ -37,6 +37,8 @@ class MockStorageService extends StorageService {
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   group('QaydProvider Unit Tests', () {
     late MockStorageService mockStorage;
     late QaydProvider provider;
