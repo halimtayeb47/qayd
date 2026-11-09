@@ -60,158 +60,161 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
           automaticallyImplyLeading: isDone || hasError,
         ),
         body: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(28.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Spacer(),
-
-                // Animated Status Icon
-                if (hasError)
-                  Icon(
-                    Icons.error_outline,
-                    size: 84,
-                    color: theme.colorScheme.error,
-                  )
-                else if (isDone)
-                  Icon(
-                    Icons.check_circle_outline,
-                    size: 84,
-                    color: theme.colorScheme.secondary,
-                  )
-                else
-                  SizedBox(
-                    width: 80,
-                    height: 80,
-                    child: CircularProgressIndicator(
-                      value: provider.processingProgress > 0
-                          ? provider.processingProgress
-                          : null,
-                      strokeWidth: 6,
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(28.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Animated Status Icon
+                  if (hasError)
+                    Icon(
+                      Icons.error_outline,
+                      size: 84,
+                      color: theme.colorScheme.error,
+                    )
+                  else if (isDone)
+                    Icon(
+                      Icons.check_circle_outline,
+                      size: 84,
+                      color: theme.colorScheme.secondary,
+                    )
+                  else
+                    SizedBox(
+                      width: 80,
+                      height: 80,
+                      child: CircularProgressIndicator(
+                        value: provider.processingProgress > 0
+                            ? provider.processingProgress
+                            : null,
+                        strokeWidth: 6,
+                      ),
                     ),
-                  ),
 
-                const SizedBox(height: 32),
+                  const SizedBox(height: 32),
 
-                // Processing Step Title
-                Text(
-                  hasError
-                      ? (isArabic ? 'حدث خطأ أثناء المعالجة' : 'Processing Encountered an Issue')
-                      : isDone
-                          ? (isArabic ? 'اكتملت المعالجة بنجاح!' : 'Processing Complete!')
-                          : (isArabic ? 'جاري تقييد وتلخيص المحاضرة' : 'Tethering & Summarizing Lecture'),
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 12),
-
-                // Detailed Status Message
-                Text(
-                  hasError
-                      ? provider.errorMessage!
-                      : provider.processingStatusMessage,
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: hasError
-                        ? theme.colorScheme.error
-                        : theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-
-                const SizedBox(height: 32),
-
-                // Pipeline Stages Progress Checklist
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 16.0,
-                      horizontal: 20.0,
-                    ),
-                    child: Column(
-                      children: [
-                        _buildStageRow(
-                          title: isArabic
-                              ? 'تحويل الصوت إلى نص (Groq Whisper)'
-                              : 'Speech-to-Text (Groq Whisper)',
-                          isCompleted: hasTranscript || isDone,
-                          isActive: !hasTranscript && !hasError && !isDone,
-                          theme: theme,
-                        ),
-                        const Divider(height: 24),
-                        _buildStageRow(
-                          title: isArabic
-                              ? 'حفظ وتثبيت النص محلياً'
-                              : 'Preserve Transcript Locally',
-                          isCompleted: hasTranscript || isDone,
-                          isActive: false,
-                          theme: theme,
-                        ),
-                        const Divider(height: 24),
-                        _buildStageRow(
-                          title: isArabic
-                              ? 'التلخيص الأكاديمي (Google Gemini)'
-                              : 'Academic Summary (Google Gemini)',
-                          isCompleted: isDone,
-                          isActive: hasTranscript && !isDone && !hasError,
-                          theme: theme,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                const Spacer(),
-
-                // Actions upon Completion or Error
-                if (hasError && hasTranscript) ...[
-                  // Recovery Action 1: View Transcript (Transcript is never lost!)
-                  FilledButton.icon(
-                    onPressed: () {
-                      Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => DetailScreen(qaydId: activeQayd.id),
-                        ),
-                      );
-                    },
-                    icon: const Icon(Icons.description),
-                    label: Text(
-                      isArabic ? 'عرض النص المفرغ المحفوظ' : 'View Saved Transcript',
+                  // Processing Step Title
+                  Text(
+                    hasError
+                        ? (isArabic ? 'حدث خطأ أثناء المعالجة' : 'Processing Encountered an Issue')
+                        : isDone
+                            ? (isArabic ? 'اكتملت المعالجة بنجاح!' : 'Processing Complete!')
+                            : (isArabic ? 'جاري تقييد وتلخيص المحاضرة' : 'Tethering & Summarizing Lecture'),
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
                   const SizedBox(height: 12),
-                  // Recovery Action 2: Retry Summary
-                  OutlinedButton.icon(
-                    onPressed: () {
-                      provider.retrySummary(activeQayd.id);
-                    },
-                    icon: const Icon(Icons.refresh),
-                    label: Text(
-                      isArabic ? 'إعادة محاولة التلخيص' : 'Retry Summary',
-                    ),
-                  ),
-                ] else if (isDone) ...[
-                  FilledButton.icon(
-                    onPressed: () {
-                      Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => DetailScreen(qaydId: activeQayd!.id),
-                        ),
-                      );
-                    },
-                    icon: const Icon(Icons.arrow_forward),
-                    label: Text(
-                      isArabic ? 'فتح ملخص المحاضرة' : 'Open Lecture Notes',
-                    ),
-                  ),
-                ],
 
-                const SizedBox(height: 16),
-              ],
+                  // Detailed Status Message
+                  Text(
+                    hasError
+                        ? provider.errorMessage!
+                        : provider.processingStatusMessage,
+                    textAlign: TextAlign.center,
+                    maxLines: 4,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: hasError
+                          ? theme.colorScheme.error
+                          : theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+
+                  const SizedBox(height: 32),
+
+                  // Pipeline Stages Progress Checklist
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 16.0,
+                        horizontal: 20.0,
+                      ),
+                      child: Column(
+                        children: [
+                          _buildStageRow(
+                            title: isArabic
+                                ? 'تحويل الصوت إلى نص (Groq Whisper)'
+                                : 'Speech-to-Text (Groq Whisper)',
+                            isCompleted: hasTranscript || isDone,
+                            isActive: !hasTranscript && !hasError && !isDone,
+                            theme: theme,
+                          ),
+                          const Divider(height: 24),
+                          _buildStageRow(
+                            title: isArabic
+                                ? 'حفظ وتثبيت النص محلياً'
+                                : 'Preserve Transcript Locally',
+                            isCompleted: hasTranscript || isDone,
+                            isActive: false,
+                            theme: theme,
+                          ),
+                          const Divider(height: 24),
+                          _buildStageRow(
+                            title: isArabic
+                                ? 'التلخيص الأكاديمي (Google Gemini)'
+                                : 'Academic Summary (Google Gemini)',
+                            isCompleted: isDone,
+                            isActive: hasTranscript && !isDone && !hasError,
+                            theme: theme,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 24),
+
+                  // Actions upon Completion or Error
+                  if (hasError && hasTranscript) ...[
+                    // Recovery Action 1: View Transcript (Transcript is never lost!)
+                    FilledButton.icon(
+                      onPressed: () {
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => DetailScreen(qaydId: activeQayd.id),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.description),
+                      label: Text(
+                        isArabic ? 'عرض النص المفرغ المحفوظ' : 'View Saved Transcript',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    // Recovery Action 2: Retry Summary
+                    OutlinedButton.icon(
+                      onPressed: () {
+                        provider.retrySummary(activeQayd.id);
+                      },
+                      icon: const Icon(Icons.refresh),
+                      label: Text(
+                        isArabic ? 'إعادة محاولة التلخيص' : 'Retry Summary',
+                      ),
+                    ),
+                  ] else if (isDone) ...[
+                    FilledButton.icon(
+                      onPressed: () {
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => DetailScreen(qaydId: activeQayd!.id),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.arrow_forward),
+                      label: Text(
+                        isArabic ? 'فتح ملخص المحاضرة' : 'Open Lecture Notes',
+                      ),
+                    ),
+                  ],
+
+                  const SizedBox(height: 16),
+                ],
+              ),
             ),
           ),
         ),
