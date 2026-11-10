@@ -25,7 +25,7 @@ class ApiConstants {
 
   /// The validated code-switching prompt that enforces English technical terms
   /// inside Arabic speech without unwanted translations.
-static const String groqPrompt = """
+  static const String groqPrompt = """
       'Transcribe verbatim without translation. '
       'Maintain strict code-switching between Arabic and English. '
       'Transcribe Arabic speech in Arabic script and all technical terms, '
