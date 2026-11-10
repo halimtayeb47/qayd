@@ -310,10 +310,13 @@ class _DetailScreenState extends State<DetailScreen>
   // ---------------------------------------------------------------------------
   Widget _buildSummaryTab(ThemeData theme, Qayd qayd, bool isArabic) {
     final summary = qayd.summary;
+    final provider = context.watch<QaydProvider>();
+    final isGenerating = provider.isRetryingSummary;
+    final hasTranscript = qayd.transcript.trim().isNotEmpty;
 
     if (summary == null) {
       return Center(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(24.0),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -326,21 +329,65 @@ class _DetailScreenState extends State<DetailScreen>
               ),
               const SizedBox(height: 8),
               Text(
-                isArabic
-                    ? 'يمكنك إنشاء الملخص الأكاديمي الآن باستخدام Gemini'
-                    : 'You can generate the academic summary now with Gemini',
+                !hasTranscript
+                    ? (isArabic
+                        ? 'يرجى تفريغ الصوت أو إضافة نص المحاضرة أولاً قبل توليد الملخص الأكاديمي'
+                        : 'Please transcribe the lecture audio or add a transcript first before generating a summary.')
+                    : (isArabic
+                        ? 'يمكنك إنشاء الملخص الأكاديمي الآن باستخدام Gemini'
+                        : 'You can generate the academic summary now with Gemini'),
                 textAlign: TextAlign.center,
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
+              if (provider.errorMessage != null && !isGenerating) ...[
+                const SizedBox(height: 12),
+                Text(
+                  provider.errorMessage!,
+                  textAlign: TextAlign.center,
+                  maxLines: 4,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.error,
+                  ),
+                ),
+              ],
               const SizedBox(height: 20),
               FilledButton.icon(
-                onPressed: () {
-                  context.read<QaydProvider>().retrySummary(qayd.id);
-                },
-                icon: const Icon(Icons.auto_awesome),
-                label: Text(isArabic ? 'توليد الملخص الآن' : 'Generate Summary Now'),
+                onPressed: (!hasTranscript || isGenerating)
+                    ? null
+                    : () async {
+                        final qaydProvider = context.read<QaydProvider>();
+                        final messenger = ScaffoldMessenger.of(context);
+                        await qaydProvider.retrySummary(qayd.id);
+                        if (!mounted) return;
+                        final error = qaydProvider.errorMessage;
+                        if (error != null) {
+                          messenger.showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                error,
+                                maxLines: 3,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              backgroundColor: theme.colorScheme.error,
+                            ),
+                          );
+                        }
+                      },
+                icon: isGenerating
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2.5),
+                      )
+                    : const Icon(Icons.auto_awesome),
+                label: Text(
+                  isGenerating
+                      ? (isArabic ? 'جاري توليد الملخص...' : 'Generating Summary...')
+                      : (isArabic ? 'توليد الملخص الآن' : 'Generate Summary Now'),
+                ),
               ),
             ],
           ),

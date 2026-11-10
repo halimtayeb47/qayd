@@ -37,6 +37,7 @@ class QaydProvider extends ChangeNotifier {
   String _processingStatusMessage = '';
   double _processingProgress = 0.0;
   String? _errorMessage;
+  bool _isRetryingSummary = false;
 
   // Recording State
   bool _isRecording = false;
@@ -86,6 +87,7 @@ class QaydProvider extends ChangeNotifier {
   String get processingStatusMessage => _processingStatusMessage;
   double get processingProgress => _processingProgress;
   String? get errorMessage => _errorMessage;
+  bool get isRetryingSummary => _isRetryingSummary;
 
   bool get isRecording => _isRecording;
   bool get isPaused => _isPaused;
@@ -246,7 +248,10 @@ class QaydProvider extends ChangeNotifier {
   /// Starts live microphone recording
   Future<void> startRecording() async {
     try {
+      _activeQayd = null;
       _errorMessage = null;
+      _processingProgress = 0.0;
+      _processingStatusMessage = '';
       await recordingService.startRecording();
       _isRecording = true;
       _isPaused = false;
@@ -276,6 +281,14 @@ class QaydProvider extends ChangeNotifier {
 
   /// Stops recording and triggers the AI processing pipeline
   Future<Qayd> stopRecordingAndProcess({String? title}) async {
+    // Clear any previously completed activeQayd synchronously so ProcessingScreen
+    // does not immediately auto-navigate to the previous lecture while stopRecording() awaits.
+    _activeQayd = null;
+    _errorMessage = null;
+    _processingProgress = 0.1;
+    _processingStatusMessage = 'Saving audio recording...';
+    notifyListeners();
+
     final audioPath = await recordingService.stopRecording();
     _isRecording = false;
     _isPaused = false;
@@ -307,6 +320,12 @@ class QaydProvider extends ChangeNotifier {
     try {
       final picked = await pickerService.pickAudioFile();
       if (picked == null) return null; // User cancelled
+
+      _activeQayd = null;
+      _errorMessage = null;
+      _processingProgress = 0.1;
+      _processingStatusMessage = 'Preparing imported audio...';
+      notifyListeners();
 
       final finalTitle = title?.trim().isNotEmpty == true
           ? title!.trim()
@@ -418,8 +437,19 @@ class QaydProvider extends ChangeNotifier {
   /// Retries summarization for a transcribed Qayd (e.g. after fixing rate limit)
   Future<void> retrySummary(String qaydId) async {
     var qayd = storageService.getQayd(qaydId);
-    if (qayd == null || qayd.transcript.isEmpty) return;
+    if (qayd == null) {
+      _errorMessage = 'Lecture not found.';
+      notifyListeners();
+      return;
+    }
+    if (qayd.transcript.trim().isEmpty) {
+      _errorMessage =
+          'Cannot generate summary: no transcript available for this lecture.';
+      notifyListeners();
+      return;
+    }
 
+    _isRetryingSummary = true;
     _errorMessage = null;
     _processingStatusMessage = 'Regenerating summary with Gemini...';
     notifyListeners();
@@ -439,6 +469,7 @@ class QaydProvider extends ChangeNotifier {
     } catch (e) {
       _errorMessage = 'Retry failed: $e';
     } finally {
+      _isRetryingSummary = false;
       notifyListeners();
     }
   }
