@@ -10,7 +10,9 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../data/models/qayd_model.dart';
+import '../../data/services/audio_compression_service.dart';
 import '../../providers/qayd_provider.dart';
+import '../../widgets/qayd_actions.dart';
 import '../record/record_screen.dart';
 import '../processing/processing_screen.dart';
 import '../detail/detail_screen.dart';
@@ -64,9 +66,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 ListTile(
                   leading: CircleAvatar(
                     backgroundColor: theme.colorScheme.primaryContainer,
-                    child: Icon(Icons.mic, color: theme.colorScheme.onPrimaryContainer),
+                    child: Icon(Icons.mic,
+                        color: theme.colorScheme.onPrimaryContainer),
                   ),
-                  title: Text(isArabic ? 'تسجيل محاضرة حية' : 'Record Live Lecture'),
+                  title: Text(
+                      isArabic ? 'تسجيل محاضرة حية' : 'Record Live Lecture'),
                   subtitle: Text(
                     isArabic
                         ? 'تسجيل الصوت مباشرة من الميكروفون'
@@ -87,26 +91,16 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: Icon(Icons.upload_file,
                         color: theme.colorScheme.onSecondaryContainer),
                   ),
-                  title: Text(isArabic ? 'استيراد ملف صوتي' : 'Import Audio File'),
+                  title: Text(
+                      isArabic ? 'استيراد ملف صوتي' : 'Import Audio File'),
                   subtitle: Text(
                     isArabic
-                        ? 'رفع ملف MP3 أو M4A أو WAV (حتى 100 ميجابايت)'
-                        : 'Import MP3, M4A, or WAV file (up to 100 MB)',
+                        ? 'يتم ضغط الملف تلقائياً قبل الرفع (أقل من 100 ميجابايت)'
+                        : 'Auto-compressed before upload (must stay under 100 MB)',
                   ),
-                  onTap: () async {
+                  onTap: () {
                     Navigator.pop(ctx);
-                    final provider = context.read<QaydProvider>();
-                    final navigator = Navigator.of(context);
-
-                    // Open file picker
-                    final pickedQayd = await provider.importAudioAndProcess();
-                    if (pickedQayd != null) {
-                      navigator.push(
-                        MaterialPageRoute(
-                          builder: (_) => const ProcessingScreen(),
-                        ),
-                      );
-                    }
+                    _handleImportAudio(isArabic: isArabic);
                   },
                 ),
               ],
@@ -117,39 +111,105 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _showCreateFolderDialog(BuildContext context) {
-    final controller = TextEditingController();
-    final isArabic = Localizations.localeOf(context).languageCode == 'ar';
+  Future<void> _handleImportAudio({required bool isArabic}) async {
+    final provider = context.read<QaydProvider>();
+    final navigator = Navigator.of(context);
+    var compressionDialogOpen = false;
 
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(isArabic ? 'إنشاء مجلد جديد' : 'New Course Folder'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: InputDecoration(
-            labelText: isArabic ? 'اسم المادة أو المقرر' : 'Course / Subject Name',
-            hintText: isArabic ? 'مثال: الذكاء الاصطناعي' : 'e.g. Artificial Intelligence',
+    try {
+      final picked = await provider.pickAudioForImport();
+      if (picked == null || !mounted) return;
+
+      compressionDialogOpen = true;
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => PopScope(
+          canPop: false,
+          child: AlertDialog(
+            content: Row(
+              children: [
+                const CircularProgressIndicator(),
+                const SizedBox(width: 20),
+                Expanded(
+                  child: Text(
+                    isArabic
+                        ? 'جاري ضغط الملف الصوتي...'
+                        : 'Compressing audio...',
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(isArabic ? 'إلغاء' : 'Cancel'),
+      );
+
+      final compressed = await provider.compressImportedAudio(picked);
+      if (compressionDialogOpen && mounted && navigator.canPop()) {
+        navigator.pop();
+        compressionDialogOpen = false;
+      }
+      if (!mounted) return;
+
+      provider.prepareForImportProcessing();
+      navigator.push(
+        MaterialPageRoute(
+          builder: (_) => const ProcessingScreen(),
+        ),
+      );
+
+      try {
+        await provider.processCompressedImport(
+          audioPath: compressed.path,
+          fileName: picked.fileName,
+        );
+      } catch (_) {
+        // Handled and displayed inside ProcessingScreen via provider.errorMessage
+      }
+    } catch (e) {
+      if (compressionDialogOpen && mounted && navigator.canPop()) {
+        navigator.pop();
+        compressionDialogOpen = false;
+      }
+      if (!mounted) return;
+
+      final alertMessage = e is AudioNotTranscribableException
+          ? (isArabic ? e.messageAr : e.messageEn)
+          : (isArabic
+              ? 'هذا الملف الصوتي غير قابل للتفريغ: $e'
+              : 'This audio file is not transcribable: $e');
+
+      showDialog<void>(
+        context: context,
+        builder: (dialogCtx) => AlertDialog(
+          title: Row(
+            children: [
+              Icon(
+                Icons.error_outline,
+                color: Theme.of(dialogCtx).colorScheme.error,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  isArabic ? 'ملف غير قابل للتفريغ' : 'File Not Transcribable',
+                ),
+              ),
+            ],
           ),
-          FilledButton(
-            onPressed: () {
-              if (controller.text.trim().isNotEmpty) {
-                context.read<QaydProvider>().createFolder(controller.text);
-              }
-              Navigator.pop(ctx);
-            },
-            child: Text(isArabic ? 'إنشاء' : 'Create'),
-          ),
-        ],
-      ),
-    );
+          content: Text(alertMessage),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogCtx),
+              child: Text(isArabic ? 'حسناً' : 'OK'),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
+  void _showCreateFolderDialog(BuildContext context) {
+    showCreateFolderDialog(context);
   }
 
   @override
@@ -292,12 +352,19 @@ class _HomeScreenState extends State<HomeScreen> {
           ...provider.folders.map(
             (folder) => Padding(
               padding: const EdgeInsets.only(right: 8.0),
-              child: ChoiceChip(
-                label: Text(folder.name),
-                selected: selectedFolderId == folder.id,
-                onSelected: (selected) {
-                  provider.filterByFolder(selected ? folder.id : null);
-                },
+              child: GestureDetector(
+                onLongPress: () => showFolderActionsSheet(context, folder),
+                child: InputChip(
+                  label: Text(folder.name),
+                  selected: selectedFolderId == folder.id,
+                  onSelected: (selected) {
+                    provider.filterByFolder(selected ? folder.id : null);
+                  },
+                  onDeleted: () => showFolderActionsSheet(context, folder),
+                  deleteIcon: const Icon(Icons.more_vert, size: 16),
+                  deleteButtonTooltipMessage:
+                      isArabic ? 'خيارات المجلد' : 'Folder options',
+                ),
               ),
             ),
           ),
@@ -365,12 +432,17 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildQaydsList(
       ThemeData theme, QaydProvider provider, bool isArabic) {
     final dateFormat = DateFormat('MMM d, yyyy');
+    final folderNamesById = {
+      for (final folder in provider.folders) folder.id: folder.name,
+    };
 
     return ListView.builder(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
       itemCount: provider.qayds.length,
       itemBuilder: (context, index) {
         final qayd = provider.qayds[index];
+        final folderName =
+            qayd.folderId != null ? folderNamesById[qayd.folderId] : null;
 
         return Card(
           margin: const EdgeInsets.only(bottom: 12.0),
@@ -384,6 +456,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               );
             },
+            onLongPress: () => showQaydCardActionsSheet(context, qayd),
             child: Padding(
               padding: const EdgeInsets.all(16.0),
               child: Column(
@@ -435,6 +508,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           ],
                         ),
                       ),
+                      const SizedBox(width: 8),
                       // Duration Pill
                       Container(
                         padding: const EdgeInsets.symmetric(
@@ -451,6 +525,18 @@ class _HomeScreenState extends State<HomeScreen> {
                             fontWeight: FontWeight.bold,
                           ),
                         ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.more_vert, size: 20),
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(
+                          minWidth: 32,
+                          minHeight: 32,
+                        ),
+                        tooltip: isArabic ? 'خيارات المحاضرة' : 'Qayd options',
+                        onPressed: () =>
+                            showQaydCardActionsSheet(context, qayd),
                       ),
                     ],
                   ),
@@ -480,9 +566,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
                   const SizedBox(height: 8),
 
-                  // Badges: Language & Folder
+                  // Badges: Language, Folder & Summary Status
                   Wrap(
                     spacing: 8,
+                    runSpacing: 6,
                     children: [
                       // Language Badge
                       Container(
@@ -506,6 +593,37 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ),
                       ),
+                      // Assigned Folder Badge
+                      if (folderName != null)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.folder_outlined,
+                                size: 11,
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                folderName,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       // Summary Status Badge
                       if (qayd.summary != null)
                         Container(

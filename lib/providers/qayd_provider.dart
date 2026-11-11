@@ -18,6 +18,7 @@ import '../data/services/groq_whisper_service.dart';
 import '../data/services/gemini_summary_service.dart';
 import '../data/services/audio_recording_service.dart';
 import '../data/services/audio_picker_service.dart';
+import '../data/services/audio_compression_service.dart';
 
 class QaydProvider extends ChangeNotifier {
   final StorageService storageService;
@@ -25,6 +26,7 @@ class QaydProvider extends ChangeNotifier {
   final GeminiSummaryService summaryService;
   final AudioRecordingService recordingService;
   final AudioPickerService pickerService;
+  final AudioCompressionService compressionService;
 
   // --- State Variables ---
   List<Qayd> _qayds = [];
@@ -37,6 +39,7 @@ class QaydProvider extends ChangeNotifier {
   String _processingStatusMessage = '';
   double _processingProgress = 0.0;
   String? _errorMessage;
+  String? _errorQaydId;
   bool _isRetryingSummary = false;
 
   // Recording State
@@ -47,6 +50,7 @@ class QaydProvider extends ChangeNotifier {
   // Language & Theme State (FR7)
   Locale _currentLocale = const Locale('en');
   ThemeMode _themeMode = ThemeMode.system;
+  bool _hasSeededSession = false;
 
   QaydProvider({
     required this.storageService,
@@ -54,7 +58,8 @@ class QaydProvider extends ChangeNotifier {
     required this.summaryService,
     required this.recordingService,
     required this.pickerService,
-  }) {
+    AudioCompressionService? compressionService,
+  }) : compressionService = compressionService ?? AudioCompressionService() {
     // Listen to recording timer stream
     recordingService.durationStream.listen((seconds) {
       _recordDurationSeconds = seconds;
@@ -87,6 +92,7 @@ class QaydProvider extends ChangeNotifier {
   String get processingStatusMessage => _processingStatusMessage;
   double get processingProgress => _processingProgress;
   String? get errorMessage => _errorMessage;
+  String? get errorQaydId => _errorQaydId;
   bool get isRetryingSummary => _isRetryingSummary;
 
   bool get isRecording => _isRecording;
@@ -129,16 +135,26 @@ class QaydProvider extends ChangeNotifier {
     _qayds = storageService.getAllQayds();
     _folders = storageService.getAllFolders();
 
-    // If storage is completely empty and initialized, seed a sample lecture note
-    // so students and evaluators can explore the UI immediately.
+    // If storage is empty, seed a sample lecture note only once per install so
+    // deleting the last user Qayd & folder never resurrects demo data.
     if (_qayds.isEmpty && _folders.isEmpty) {
-      _seedDemoData();
+      if (!storageService.hasSeededDemo && !_hasSeededSession) {
+        _seedDemoData();
+      } else {
+        notifyListeners();
+      }
     } else {
+      _hasSeededSession = true;
+      if (!storageService.hasSeededDemo) {
+        storageService.markDemoSeeded();
+      }
       notifyListeners();
     }
   }
 
   Future<void> _seedDemoData() async {
+    _hasSeededSession = true;
+    await storageService.markDemoSeeded();
     final folderId = const Uuid().v4();
     final demoFolder = QaydFolder(
       id: folderId,
@@ -193,6 +209,32 @@ class QaydProvider extends ChangeNotifier {
       summary: const QaydSummary(
         overview:
             'This lecture introduces the core concepts of Operating Systems regarding memory architecture, kernel isolation, and key trade-offs between independent Processes and lightweight Threads.',
+        sections: [
+          SummarySection(
+            heading: 'Lecture Introduction',
+            startSec: 0.0,
+            summary:
+                'Frames the comparison between OS processes and threads inside modern operating systems.',
+          ),
+          SummarySection(
+            heading: 'Processes & Kernel Isolation',
+            startSec: 15.0,
+            summary:
+                'Explains dedicated process address spaces (code, data, heap, stack) and IPC via pipes, message queues, or shared memory.',
+          ),
+          SummarySection(
+            heading: 'Threads & Shared Memory',
+            startSec: 75.0,
+            summary:
+                'Defines threads as lightweight processes sharing code and heap while keeping private registers and stack.',
+          ),
+          SummarySection(
+            heading: 'Synchronization Primitives',
+            startSec: 100.0,
+            summary:
+                'Highlights why mutexes and semaphores are needed to prevent race conditions across concurrent threads.',
+          ),
+        ],
         keyPoints: [
           'A Process is an executing program instance with its own isolated address space (code, data, heap, and stack).',
           'Inter-Process Communication (IPC) via pipes or shared memory is mandatory to exchange data across process boundaries.',
@@ -250,6 +292,7 @@ class QaydProvider extends ChangeNotifier {
     try {
       _activeQayd = null;
       _errorMessage = null;
+      _errorQaydId = null;
       _processingProgress = 0.0;
       _processingStatusMessage = '';
       await recordingService.startRecording();
@@ -259,6 +302,7 @@ class QaydProvider extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       _errorMessage = e.toString();
+      _errorQaydId = null;
       _isRecording = false;
       notifyListeners();
       rethrow;
@@ -285,60 +329,102 @@ class QaydProvider extends ChangeNotifier {
     // does not immediately auto-navigate to the previous lecture while stopRecording() awaits.
     _activeQayd = null;
     _errorMessage = null;
+    _errorQaydId = null;
     _processingProgress = 0.1;
     _processingStatusMessage = 'Saving audio recording...';
     notifyListeners();
 
-    final audioPath = await recordingService.stopRecording();
-    _isRecording = false;
-    _isPaused = false;
-    final duration = _recordDurationSeconds;
-    notifyListeners();
+    try {
+      final audioPath = await recordingService.stopRecording();
+      _isRecording = false;
+      _isPaused = false;
+      final duration = _recordDurationSeconds;
+      notifyListeners();
 
-    if (audioPath == null || audioPath.isEmpty) {
-      throw Exception('Recording produced no valid audio file.');
+      if (audioPath == null || audioPath.isEmpty) {
+        throw Exception('Recording produced no valid audio file.');
+      }
+
+      final finalTitle = title?.trim().isNotEmpty == true
+          ? title!.trim()
+          : 'Lecture ${_qayds.length + 1}';
+
+      return await _runAiPipeline(
+        audioPath: audioPath,
+        title: finalTitle,
+        durationSec: duration,
+        folderId: _selectedFolderId,
+      );
+    } catch (e) {
+      _isRecording = false;
+      _isPaused = false;
+      _errorMessage = e.toString();
+      _errorQaydId = _activeQayd?.id;
+      _processingStatusMessage = 'Processing failed.';
+      notifyListeners();
+      rethrow;
     }
-
-    final finalTitle = title?.trim().isNotEmpty == true
-        ? title!.trim()
-        : 'Lecture ${_qayds.length + 1}';
-
-    return await _runAiPipeline(
-      audioPath: audioPath,
-      title: finalTitle,
-      durationSec: duration,
-      folderId: _selectedFolderId,
-    );
   }
 
   // ---------------------------------------------------------------------------
   // Audio Import Flow (FR2)
   // ---------------------------------------------------------------------------
 
-  /// Opens file picker to import an existing audio file and processes it
+  /// Opens file picker without blocking the UI state; returns `null` if cancelled.
+  Future<PickedAudioResult?> pickAudioForImport() {
+    return pickerService.pickAudioFile();
+  }
+
+  /// Compresses a picked audio file and validates the compressed size (< 100 MB).
+  Future<CompressedAudioResult> compressImportedAudio(PickedAudioResult picked) {
+    return compressionService.compressToWhisperMp3(picked.path);
+  }
+
+  /// Resets processing state synchronously right before pushing ProcessingScreen.
+  void prepareForImportProcessing() {
+    _activeQayd = null;
+    _errorMessage = null;
+    _errorQaydId = null;
+    _processingProgress = 0.15;
+    _processingStatusMessage = 'Preparing compressed audio...';
+    notifyListeners();
+  }
+
+  /// Runs the AI pipeline for an already compressed audio file.
+  Future<Qayd> processCompressedImport({
+    required String audioPath,
+    required String fileName,
+    String? title,
+  }) async {
+    final finalTitle = title?.trim().isNotEmpty == true
+        ? title!.trim()
+        : fileName.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), '');
+
+    return await _runAiPipeline(
+      audioPath: audioPath,
+      title: finalTitle,
+      durationSec: 0, // Will be updated by Whisper duration
+      folderId: _selectedFolderId,
+    );
+  }
+
+  /// Convenience wrapper that picks, compresses, and processes an imported audio file.
   Future<Qayd?> importAudioAndProcess({String? title}) async {
     try {
-      final picked = await pickerService.pickAudioFile();
+      final picked = await pickAudioForImport();
       if (picked == null) return null; // User cancelled
 
-      _activeQayd = null;
-      _errorMessage = null;
-      _processingProgress = 0.1;
-      _processingStatusMessage = 'Preparing imported audio...';
-      notifyListeners();
+      final compressed = await compressImportedAudio(picked);
+      prepareForImportProcessing();
 
-      final finalTitle = title?.trim().isNotEmpty == true
-          ? title!.trim()
-          : picked.fileName.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), '');
-
-      return await _runAiPipeline(
-        audioPath: picked.path,
-        title: finalTitle,
-        durationSec: 0, // Will be updated by Whisper duration
-        folderId: _selectedFolderId,
+      return await processCompressedImport(
+        audioPath: compressed.path,
+        fileName: picked.fileName,
+        title: title,
       );
     } catch (e) {
       _errorMessage = e.toString();
+      _errorQaydId = _activeQayd?.id;
       notifyListeners();
       rethrow;
     }
@@ -355,6 +441,7 @@ class QaydProvider extends ChangeNotifier {
     String? folderId,
   }) async {
     _errorMessage = null;
+    _errorQaydId = null;
 
     // 1. Create initial Qayd in transcribing state
     var qayd = Qayd(
@@ -401,23 +488,27 @@ class QaydProvider extends ChangeNotifier {
       try {
         final summary = await summaryService.generateSummary(
           transcript: transcriptResult.text,
+          segments: transcriptResult.segments,
         );
 
         qayd = qayd.copyWith(
           summary: summary,
           status: QaydStatus.done,
         );
+        _processingStatusMessage = 'Done!';
+        _processingProgress = 1.0;
       } catch (geminiError) {
         // If Gemini fails (e.g. rate limit), keep the Qayd with transcript intact!
         qayd = qayd.copyWith(status: QaydStatus.failed);
         _errorMessage = 'Summary generation failed: $geminiError';
+        _errorQaydId = qayd.id;
+        _processingStatusMessage = 'Summary failed. Transcript saved safely.';
+        _processingProgress = 0.65;
       }
 
       // 4. Save Final State and Update List (FR6)
       await storageService.saveQayd(qayd);
       _activeQayd = qayd;
-      _processingStatusMessage = 'Done!';
-      _processingProgress = 1.0;
       loadInitialData(); // Refresh list
       notifyListeners();
 
@@ -427,6 +518,7 @@ class QaydProvider extends ChangeNotifier {
       await storageService.saveQayd(qayd);
       _activeQayd = qayd;
       _errorMessage = e.toString();
+      _errorQaydId = qayd.id;
       _processingStatusMessage = 'Processing failed.';
       loadInitialData();
       notifyListeners();
@@ -439,24 +531,29 @@ class QaydProvider extends ChangeNotifier {
     var qayd = storageService.getQayd(qaydId);
     if (qayd == null) {
       _errorMessage = 'Lecture not found.';
+      _errorQaydId = qaydId;
       notifyListeners();
       return;
     }
     if (qayd.transcript.trim().isEmpty) {
       _errorMessage =
           'Cannot generate summary: no transcript available for this lecture.';
+      _errorQaydId = qaydId;
       notifyListeners();
       return;
     }
 
     _isRetryingSummary = true;
     _errorMessage = null;
+    _errorQaydId = null;
+    _processingProgress = 0.65;
     _processingStatusMessage = 'Regenerating summary with Gemini...';
     notifyListeners();
 
     try {
       final summary = await summaryService.generateSummary(
         transcript: qayd.transcript,
+        segments: qayd.segments,
       );
 
       qayd = qayd.copyWith(
@@ -465,9 +562,13 @@ class QaydProvider extends ChangeNotifier {
       );
       await storageService.saveQayd(qayd);
       _activeQayd = qayd;
+      _processingProgress = 1.0;
+      _processingStatusMessage = 'Done!';
       loadInitialData();
     } catch (e) {
       _errorMessage = 'Retry failed: $e';
+      _errorQaydId = qaydId;
+      _processingProgress = 0.65;
     } finally {
       _isRetryingSummary = false;
       notifyListeners();
@@ -484,6 +585,9 @@ class QaydProvider extends ChangeNotifier {
     if (qayd != null) {
       final updated = qayd.copyWith(title: newTitle.trim());
       await storageService.saveQayd(updated);
+      if (_activeQayd?.id == id) {
+        _activeQayd = updated;
+      }
       loadInitialData();
     }
   }
@@ -494,14 +598,66 @@ class QaydProvider extends ChangeNotifier {
     if (_activeQayd?.id == id) {
       _activeQayd = null;
     }
+    if (_errorQaydId == id) {
+      _errorMessage = null;
+      _errorQaydId = null;
+    }
     loadInitialData();
   }
 
-  /// Edits the transcript and saves it (NFR11)
+  /// Edits a single timestamped transcript segment in-place and rebuilds the
+  /// full transcript so Tap-to-Seek timestamps remain intact.
+  Future<void> editTranscriptSegment(
+    String id,
+    int segmentIndex,
+    String newText,
+  ) async {
+    final qayd = storageService.getQayd(id);
+    final trimmed = newText.trim();
+    if (qayd == null ||
+        trimmed.isEmpty ||
+        segmentIndex < 0 ||
+        segmentIndex >= qayd.segments.length) {
+      return;
+    }
+
+    final updatedSegments = List<TranscriptSegment>.from(qayd.segments);
+    final target = updatedSegments[segmentIndex];
+    updatedSegments[segmentIndex] = TranscriptSegment(
+      startSec: target.startSec,
+      endSec: target.endSec,
+      text: trimmed,
+    );
+
+    final rebuiltTranscript = updatedSegments
+        .map((s) => s.text.trim())
+        .where((t) => t.isNotEmpty)
+        .join(' ');
+
+    final updated = qayd.copyWith(
+      transcript: rebuiltTranscript,
+      segments: updatedSegments,
+    );
+    await storageService.saveQayd(updated);
+    if (_activeQayd?.id == id) {
+      _activeQayd = updated;
+    }
+    loadInitialData();
+  }
+
+  /// Edits the full transcript and saves it (NFR11).
+  /// Clears stale timestamped segments only when text actually changed.
   Future<void> editTranscript(String id, String newTranscript) async {
     final qayd = storageService.getQayd(id);
     if (qayd != null) {
-      final updated = qayd.copyWith(transcript: newTranscript);
+      final trimmed = newTranscript.trim();
+      final textChanged = trimmed != qayd.transcript.trim();
+      final updated = qayd.copyWith(
+        transcript: trimmed,
+        segments: (qayd.segments.isNotEmpty && textChanged)
+            ? const []
+            : qayd.segments,
+      );
       await storageService.saveQayd(updated);
       if (_activeQayd?.id == id) {
         _activeQayd = updated;
@@ -510,12 +666,18 @@ class QaydProvider extends ChangeNotifier {
     }
   }
 
-  /// Moves a Qayd to a specific subject folder (NFR10)
+  /// Moves a Qayd to a specific subject folder (or Root when [folderId] is null)
   Future<void> moveQaydToFolder(String qaydId, String? folderId) async {
     final qayd = storageService.getQayd(qaydId);
     if (qayd != null) {
-      final updated = qayd.copyWith(folderId: folderId);
+      final updated = qayd.copyWith(
+        folderId: folderId,
+        clearFolderId: folderId == null,
+      );
       await storageService.saveQayd(updated);
+      if (_activeQayd?.id == qaydId) {
+        _activeQayd = updated;
+      }
       loadInitialData();
     }
   }
@@ -523,6 +685,7 @@ class QaydProvider extends ChangeNotifier {
   /// Creates a new subject folder (NFR10)
   Future<void> createFolder(String name) async {
     if (name.trim().isEmpty) return;
+    _hasSeededSession = true;
     final folder = QaydFolder(
       id: const Uuid().v4(),
       name: name.trim(),
@@ -532,8 +695,27 @@ class QaydProvider extends ChangeNotifier {
     loadInitialData();
   }
 
+  /// Renames an existing subject folder
+  Future<void> renameFolder(String folderId, String newName) async {
+    final trimmed = newName.trim();
+    if (trimmed.isEmpty) return;
+    for (final folder in storageService.getAllFolders()) {
+      if (folder.id == folderId) {
+        final updated = QaydFolder(
+          id: folder.id,
+          name: trimmed,
+          createdAt: folder.createdAt,
+        );
+        await storageService.saveFolder(updated);
+        loadInitialData();
+        return;
+      }
+    }
+  }
+
   /// Deletes a folder and safely unfiles all its Qayds
   Future<void> deleteFolder(String folderId) async {
+    _hasSeededSession = true;
     await storageService.deleteFolder(folderId);
     if (_selectedFolderId == folderId) {
       _selectedFolderId = null;

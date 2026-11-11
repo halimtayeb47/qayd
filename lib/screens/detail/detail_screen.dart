@@ -8,10 +8,12 @@
 
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:provider/provider.dart';
 import '../../data/models/qayd_model.dart';
 import '../../providers/qayd_provider.dart';
+import '../../widgets/qayd_actions.dart';
 
 class DetailScreen extends StatefulWidget {
   final String qaydId;
@@ -45,10 +47,14 @@ class _DetailScreenState extends State<DetailScreen>
 
   void _initAudioPlayer() async {
     final provider = context.read<QaydProvider>();
-    final qayd = provider.qayds.firstWhere(
-      (q) => q.id == widget.qaydId,
-      orElse: () => provider.activeQayd!,
+    final qayd = provider.qayds.cast<Qayd?>().firstWhere(
+      (q) => q?.id == widget.qaydId,
+      orElse: () => provider.activeQayd?.id == widget.qaydId
+          ? provider.activeQayd
+          : provider.storageService.getQayd(widget.qaydId),
     );
+
+    if (qayd == null) return;
 
     if (qayd.audioPath.isNotEmpty && await File(qayd.audioPath).exists()) {
       try {
@@ -83,10 +89,10 @@ class _DetailScreenState extends State<DetailScreen>
     return '$m:$s';
   }
 
-  void _seekToSegment(TranscriptSegment segment) {
+  void _seekToSeconds(double seconds) {
     if (_audioAvailable) {
       _audioPlayer.seek(
-        Duration(milliseconds: (segment.startSec * 1000).round()),
+        Duration(milliseconds: (seconds * 1000).round()),
       );
       if (!_audioPlayer.playing) {
         _audioPlayer.play();
@@ -117,7 +123,9 @@ class _DetailScreenState extends State<DetailScreen>
 
     final qayd = provider.qayds.cast<Qayd?>().firstWhere(
       (q) => q?.id == widget.qaydId,
-      orElse: () => provider.activeQayd,
+      orElse: () => provider.activeQayd?.id == widget.qaydId
+          ? provider.activeQayd
+          : provider.storageService.getQayd(widget.qaydId),
     );
 
     if (qayd == null) {
@@ -314,6 +322,10 @@ class _DetailScreenState extends State<DetailScreen>
     final isGenerating = provider.isRetryingSummary;
     final hasTranscript = qayd.transcript.trim().isNotEmpty;
 
+    final showScopedError = provider.errorMessage != null &&
+        provider.errorQaydId == qayd.id &&
+        !isGenerating;
+
     if (summary == null) {
       return Center(
         child: SingleChildScrollView(
@@ -341,7 +353,7 @@ class _DetailScreenState extends State<DetailScreen>
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
-              if (provider.errorMessage != null && !isGenerating) ...[
+              if (showScopedError) ...[
                 const SizedBox(height: 12),
                 Text(
                   provider.errorMessage!,
@@ -357,25 +369,7 @@ class _DetailScreenState extends State<DetailScreen>
               FilledButton.icon(
                 onPressed: (!hasTranscript || isGenerating)
                     ? null
-                    : () async {
-                        final qaydProvider = context.read<QaydProvider>();
-                        final messenger = ScaffoldMessenger.of(context);
-                        await qaydProvider.retrySummary(qayd.id);
-                        if (!mounted) return;
-                        final error = qaydProvider.errorMessage;
-                        if (error != null) {
-                          messenger.showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                error,
-                                maxLines: 3,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              backgroundColor: theme.colorScheme.error,
-                            ),
-                          );
-                        }
-                      },
+                    : () => context.read<QaydProvider>().retrySummary(qayd.id),
                 icon: isGenerating
                     ? const SizedBox(
                         width: 18,
@@ -395,91 +389,12 @@ class _DetailScreenState extends State<DetailScreen>
       );
     }
 
-    return ListView(
-      padding: const EdgeInsets.all(16.0),
-      children: [
-        // Overview Card
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(18.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(Icons.menu_book, color: theme.colorScheme.primary, size: 20),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Overview',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  summary.overview,
-                  style: theme.textTheme.bodyLarge?.copyWith(
-                    height: 1.6,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-
-        // Key Points Card
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(18.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(Icons.checklist, color: theme.colorScheme.secondary, size: 20),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Key Points & Takeaways',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                ...summary.keyPoints.map(
-                  (point) => Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 6.0),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('• ',
-                            style: TextStyle(
-                              fontSize: 18,
-                              color: theme.colorScheme.secondary,
-                              fontWeight: FontWeight.bold,
-                            )),
-                        Expanded(
-                          child: Text(
-                            point,
-                            style: theme.textTheme.bodyMedium?.copyWith(height: 1.5),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-
-        // Key Terms & Definitions Card
-        if (summary.keyTerms.isNotEmpty)
+    return Directionality(
+      textDirection: TextDirection.ltr,
+      child: ListView(
+        padding: const EdgeInsets.all(16.0),
+        children: [
+          // Overview Card
           Card(
             child: Padding(
               padding: const EdgeInsets.all(18.0),
@@ -488,56 +403,334 @@ class _DetailScreenState extends State<DetailScreen>
                 children: [
                   Row(
                     children: [
-                      Icon(Icons.lightbulb_outline,
-                          color: theme.colorScheme.tertiary, size: 20),
+                      Icon(Icons.menu_book,
+                          color: theme.colorScheme.primary, size: 20),
                       const SizedBox(width: 8),
-                      Text(
-                        'Key Terminology',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
+                      Expanded(
+                        child: Text(
+                          'Overview',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
+                      ),
+                      IconButton(
+                        tooltip: isArabic ? 'نسخ الملخص' : 'Copy Summary',
+                        icon: const Icon(Icons.content_copy, size: 20),
+                        onPressed: () =>
+                            _copySummaryToClipboard(qayd, summary, isArabic),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  ...summary.keyTerms.map(
-                    (item) => Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8.0),
-                      child: Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-                          ),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              item.term,
-                              style: theme.textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                color: theme.colorScheme.primary,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              item.definition,
-                              style: theme.textTheme.bodyMedium,
-                            ),
-                          ],
-                        ),
-                      ),
+                  const SizedBox(height: 8),
+                  Text(
+                    summary.overview,
+                    style: theme.textTheme.bodyLarge?.copyWith(
+                      height: 1.6,
                     ),
                   ),
                 ],
               ),
             ),
           ),
-        const SizedBox(height: 24),
-      ],
+
+          // Topic Breakdown Sections Card
+          if (summary.sections.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(18.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.view_agenda_outlined,
+                          color: theme.colorScheme.primary,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Topic Breakdown',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    ...summary.sections.map(
+                      (section) => Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 6.0),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.surfaceContainerHighest
+                                .withValues(alpha: 0.35),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: theme.colorScheme.outlineVariant
+                                  .withValues(alpha: 0.5),
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  InkWell(
+                                    onTap: _audioAvailable
+                                        ? () =>
+                                            _seekToSeconds(section.startSec)
+                                        : null,
+                                    borderRadius: BorderRadius.circular(6),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 3,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: _audioAvailable
+                                            ? theme.colorScheme.primaryContainer
+                                            : theme.colorScheme
+                                                .surfaceContainerHighest,
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          if (_audioAvailable) ...[
+                                            Icon(
+                                              Icons.play_arrow,
+                                              size: 13,
+                                              color: theme.colorScheme
+                                                  .onPrimaryContainer,
+                                            ),
+                                            const SizedBox(width: 2),
+                                          ],
+                                          Text(
+                                            _formatTime(section.startSec),
+                                            style: theme.textTheme.labelSmall
+                                                ?.copyWith(
+                                              fontWeight: FontWeight.bold,
+                                              color: _audioAvailable
+                                                  ? theme.colorScheme
+                                                      .onPrimaryContainer
+                                                  : theme.colorScheme
+                                                      .onSurfaceVariant,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(
+                                      section.heading,
+                                      style: theme.textTheme.titleSmall
+                                          ?.copyWith(
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                section.summary,
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  height: 1.5,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+          const SizedBox(height: 16),
+
+          // Key Points Card
+          if (summary.keyPoints.isNotEmpty) ...[
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(18.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.checklist,
+                            color: theme.colorScheme.secondary, size: 20),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Key Points & Takeaways',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    ...summary.keyPoints.map(
+                      (point) => Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 6.0),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '• ',
+                              style: TextStyle(
+                                fontSize: 18,
+                                color: theme.colorScheme.secondary,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            Expanded(
+                              child: Text(
+                                point,
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  height: 1.5,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+
+          // Key Terms & Definitions Card
+          if (summary.keyTerms.isNotEmpty)
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(18.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.lightbulb_outline,
+                          color: theme.colorScheme.tertiary,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Key Terminology',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    ...summary.keyTerms.map(
+                      (item) => Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8.0),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.surfaceContainerHighest
+                                .withValues(alpha: 0.4),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: theme.colorScheme.outlineVariant
+                                  .withValues(alpha: 0.5),
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                item.term,
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: theme.colorScheme.primary,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                item.definition,
+                                style: theme.textTheme.bodyMedium,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          const SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _copySummaryToClipboard(
+    Qayd qayd,
+    QaydSummary summary,
+    bool isArabic,
+  ) async {
+    final buffer = StringBuffer()
+      ..writeln(qayd.title)
+      ..writeln()
+      ..writeln('OVERVIEW')
+      ..writeln(summary.overview);
+
+    if (summary.sections.isNotEmpty) {
+      buffer
+        ..writeln()
+        ..writeln('TOPIC BREAKDOWN');
+      for (final section in summary.sections) {
+        buffer.writeln(
+          '[${_formatTime(section.startSec)}] ${section.heading}: ${section.summary}',
+        );
+      }
+    }
+
+    if (summary.keyPoints.isNotEmpty) {
+      buffer
+        ..writeln()
+        ..writeln('KEY TAKEAWAYS');
+      for (final point in summary.keyPoints) {
+        buffer.writeln('• $point');
+      }
+    }
+
+    if (summary.keyTerms.isNotEmpty) {
+      buffer
+        ..writeln()
+        ..writeln('KEY TERMINOLOGY');
+      for (final term in summary.keyTerms) {
+        buffer.writeln('- ${term.term}: ${term.definition}');
+      }
+    }
+
+    await Clipboard.setData(ClipboardData(text: buffer.toString().trim()));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          isArabic ? 'تم نسخ الملخص إلى الحافظة' : 'Summary copied to clipboard',
+        ),
+      ),
     );
   }
 
@@ -562,7 +755,8 @@ class _DetailScreenState extends State<DetailScreen>
               _currentPositionSec <= seg.endSec;
 
           return InkWell(
-            onTap: () => _seekToSegment(seg),
+            onTap: () => _seekToSeconds(seg.startSec),
+            onLongPress: () => _showEditSegmentDialog(qayd, index, seg, isArabic),
             borderRadius: BorderRadius.circular(10),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 250),
@@ -614,6 +808,17 @@ class _DetailScreenState extends State<DetailScreen>
                       ),
                     ),
                   ),
+                  IconButton(
+                    icon: Icon(
+                      Icons.edit_outlined,
+                      size: 18,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                    tooltip: isArabic ? 'تعديل المقطع' : 'Edit Segment',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () =>
+                        _showEditSegmentDialog(qayd, index, seg, isArabic),
+                  ),
                 ],
               ),
             ),
@@ -632,144 +837,84 @@ class _DetailScreenState extends State<DetailScreen>
     );
   }
 
+  void _showEditSegmentDialog(
+    Qayd qayd,
+    int segmentIndex,
+    TranscriptSegment segment,
+    bool isArabic,
+  ) {
+    final controller = TextEditingController(text: segment.text);
+    final provider = context.read<QaydProvider>();
+
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(
+          isArabic
+              ? 'تعديل المقطع [${_formatTime(segment.startSec)}]'
+              : 'Edit Segment [${_formatTime(segment.startSec)}]',
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: TextField(
+            controller: controller,
+            maxLines: 5,
+            autofocus: true,
+            decoration: const InputDecoration(
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(isArabic ? 'إلغاء' : 'Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (controller.text.trim().isNotEmpty) {
+                provider.editTranscriptSegment(
+                  qayd.id,
+                  segmentIndex,
+                  controller.text,
+                );
+              }
+              Navigator.pop(ctx);
+            },
+            child: Text(isArabic ? 'حفظ' : 'Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
   // ---------------------------------------------------------------------------
   // Action Handlers (Rename, Move, Edit, Delete)
   // ---------------------------------------------------------------------------
   void _handleMenuAction(String action, Qayd qayd) {
-    final provider = context.read<QaydProvider>();
-    final theme = Theme.of(context);
-    final isArabic = Localizations.localeOf(context).languageCode == 'ar';
-
     if (action == 'rename') {
-      final controller = TextEditingController(text: qayd.title);
-      showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: Text(isArabic ? 'إعادة تسمية المحاضرة' : 'Rename Lecture'),
-          content: TextField(
-            controller: controller,
-            autofocus: true,
-            decoration: InputDecoration(
-              labelText: isArabic ? 'العنوان' : 'Title',
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: Text(isArabic ? 'إلغاء' : 'Cancel'),
-            ),
-            FilledButton(
-              onPressed: () {
-                if (controller.text.trim().isNotEmpty) {
-                  provider.renameQayd(qayd.id, controller.text.trim());
-                }
-                Navigator.pop(ctx);
-              },
-              child: Text(isArabic ? 'حفظ' : 'Save'),
-            ),
-          ],
-        ),
-      );
+      showRenameQaydDialog(context, qayd);
     } else if (action == 'edit_transcript') {
-      final controller = TextEditingController(text: qayd.transcript);
-      showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: Text(isArabic ? 'تعديل النص المفرغ' : 'Edit Transcript'),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: TextField(
-              controller: controller,
-              maxLines: 10,
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: Text(isArabic ? 'إلغاء' : 'Cancel'),
-            ),
-            FilledButton(
-              onPressed: () {
-                provider.editTranscript(qayd.id, controller.text);
-                Navigator.pop(ctx);
-              },
-              child: Text(isArabic ? 'حفظ' : 'Save'),
-            ),
-          ],
-        ),
-      );
+      showEditTranscriptDialog(context, qayd);
     } else if (action == 'folder') {
-      showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: Text(isArabic ? 'نقل إلى مجلد' : 'Move to Folder'),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: ListView(
-              shrinkWrap: true,
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.inbox),
-                  title: Text(isArabic ? 'بدون مجلد (عام)' : 'Unfiled'),
-                  selected: qayd.folderId == null,
-                  onTap: () {
-                    provider.moveQaydToFolder(qayd.id, null);
-                    Navigator.pop(ctx);
-                  },
-                ),
-                ...provider.folders.map(
-                  (f) => ListTile(
-                    leading: const Icon(Icons.folder),
-                    title: Text(f.name),
-                    selected: qayd.folderId == f.id,
-                    onTap: () {
-                      provider.moveQaydToFolder(qayd.id, f.id);
-                      Navigator.pop(ctx);
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: Text(isArabic ? 'إغلاق' : 'Close'),
-            ),
-          ],
-        ),
-      );
+      showMoveToFolderDialog(context, qayd);
     } else if (action == 'delete') {
-      showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: Text(isArabic ? 'حذف المحاضرة؟' : 'Delete Qayd?'),
-          content: Text(
-            isArabic
-                ? 'هل أنت متأكد من حذف هذه المحاضرة وجميع ملفاتها نهائياً؟'
-                : 'Are you sure you want to delete this Qayd and its local audio file permanently?',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: Text(isArabic ? 'إلغاء' : 'Cancel'),
-            ),
-            FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: theme.colorScheme.error,
-              ),
-              onPressed: () {
-                provider.deleteQayd(qayd.id);
-                Navigator.pop(ctx); // Close dialog
-                Navigator.pop(context); // Go back to Home
-              },
-              child: Text(isArabic ? 'حذف' : 'Delete'),
-            ),
-          ],
-        ),
+      final navigator = Navigator.of(context);
+      showDeleteQaydDialog(
+        context,
+        qayd,
+        beforeDelete: () async {
+          try {
+            await _audioPlayer.stop();
+          } catch (_) {
+            // Audio plugin may be unavailable in headless tests or uninitialized state
+          }
+        },
+        onDeleted: () {
+          if (mounted) {
+            navigator.pop();
+          }
+        },
       );
     }
   }

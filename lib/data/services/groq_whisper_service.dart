@@ -54,8 +54,8 @@ class GroqWhisperService {
       throw Exception('Audio file not found at: $audioFilePath');
     }
 
-    // Build the multipart request payload matching your validated Node.js script
-    final fileName = audioFilePath.split(Platform.pathSeparator).last;
+    // Build the multipart request payload matching Groq Whisper API specs
+    final fileName = audioFilePath.split(RegExp(r'[/\\]')).last;
     final formData = FormData.fromMap({
       'file': await MultipartFile.fromFile(
         audioFilePath,
@@ -76,7 +76,6 @@ class GroqWhisperService {
           headers: {
             'Authorization': 'Bearer $key',
           },
-          contentType: 'multipart/form-data',
           sendTimeout: const Duration(minutes: 5),
           receiveTimeout: const Duration(minutes: 5),
         ),
@@ -91,10 +90,19 @@ class GroqWhisperService {
       return parseTranscriptionResponse(data);
     } on DioException catch (e) {
       final statusCode = e.response?.statusCode;
-      final errorMsg = e.response?.data?['error']?['message'] ?? e.message;
+      final data = e.response?.data;
+      String? errorMsg;
+      if (data is Map && data['error'] is Map) {
+        errorMsg = data['error']['message']?.toString();
+      }
+      errorMsg ??= e.message;
 
       if (statusCode == 401) {
         throw Exception('Invalid Groq API key (401 Unauthorized).');
+      } else if (statusCode == 413) {
+        throw Exception(
+          'Compressed audio exceeds Groq upload limit (25 MB on Free Tier, 100 MB on Developer Tier).',
+        );
       } else if (statusCode == 429) {
         throw Exception('Groq API rate limit exceeded. Please wait a moment.');
       } else {

@@ -55,12 +55,18 @@ class AudioRecordingService {
     final filePath = '${recordingsDir.path}/qayd_$timestamp.m4a';
     _currentFilePath = filePath;
 
-    // Direct 16 kHz Mono AAC at 32 kbps (Whisper-native format)
+    // Capture wideband 44.1 kHz mono AAC from the device microphone with auto-gain.
+    // manageBluetooth is disabled so paired watches/earbuds do not force 8 kHz SCO.
     const config = RecordConfig(
       encoder: AudioEncoder.aacLc,
-      sampleRate: 16000,
+      sampleRate: 44100,
       numChannels: 1,
-      bitRate: 32000,
+      bitRate: 64000,
+      autoGain: true,
+      androidConfig: AndroidRecordConfig(
+        manageBluetooth: false,
+        audioSource: AndroidAudioSource.mic,
+      ),
     );
 
     await recorder.start(config, path: filePath);

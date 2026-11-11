@@ -19,9 +19,16 @@ void main() {
       expect(recovered.text, 'أحد أشهر المفاهيم في البرمجة هو الـ API');
     });
 
-    test('QaydSummary with KeyTerms serialization round-trip', () {
+    test('QaydSummary with SummarySections & KeyTerms serialization round-trip', () {
       const summary = QaydSummary(
         overview: 'Overview of modern web architecture with APIs.',
+        sections: [
+          SummarySection(
+            heading: 'Introduction to APIs',
+            startSec: 15.0,
+            summary: 'Defines client-server request/response messaging.',
+          ),
+        ],
         keyPoints: [
           'APIs separate frontend from backend.',
           'Servers return structured JSON data rather than full HTML pages.',
@@ -38,11 +45,19 @@ void main() {
       final recovered = QaydSummary.fromMap(map);
 
       expect(recovered.overview, summary.overview);
+      expect(recovered.sections.length, 1);
+      expect(recovered.sections.first.heading, 'Introduction to APIs');
+      expect(recovered.sections.first.startSec, 15.0);
       expect(recovered.keyPoints.length, 2);
       expect(recovered.keyTerms.first.term, 'API');
+
+      // Verify backwards compatibility when older Hive maps omit `sections`
+      final legacyMap = Map<String, dynamic>.from(map)..remove('sections');
+      final legacyRecovered = QaydSummary.fromMap(legacyMap);
+      expect(legacyRecovered.sections, isEmpty);
     });
 
-    test('Complete Qayd entity serialization and copyWith', () {
+    test('Complete Qayd entity serialization and copyWith (including clearFolderId)', () {
       final now = DateTime.now();
       final qayd = Qayd(
         id: 'qayd-123',
@@ -56,6 +71,7 @@ void main() {
           TranscriptSegment(startSec: 0.0, endSec: 4.5, text: 'Hello everyone'),
         ],
         status: QaydStatus.done,
+        folderId: 'folder-99',
       );
 
       final map = qayd.toMap();
@@ -66,11 +82,17 @@ void main() {
       expect(recovered.language, QaydLanguage.mixed);
       expect(recovered.segments.length, 1);
       expect(recovered.status, QaydStatus.done);
+      expect(recovered.folderId, 'folder-99');
 
-      // Test copyWith
-      final updated = qayd.copyWith(title: 'Updated Title');
-      expect(updated.title, 'Updated Title');
-      expect(updated.id, 'qayd-123');
+      // Normal copyWith keeps folderId
+      final renamed = qayd.copyWith(title: 'Updated Title');
+      expect(renamed.title, 'Updated Title');
+      expect(renamed.id, 'qayd-123');
+      expect(renamed.folderId, 'folder-99');
+
+      // clearFolderId explicitly unfiles Qayd back to Root
+      final unfiled = qayd.copyWith(clearFolderId: true);
+      expect(unfiled.folderId, isNull);
     });
 
     test('QaydFolder serialization', () {

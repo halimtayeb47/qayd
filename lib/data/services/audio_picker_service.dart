@@ -2,13 +2,13 @@
 // Audio File Picker Service
 // File: lib/data/services/audio_picker_service.dart
 //
-// Handles picking and importing external audio files (FR2).
-// Validates file size (cap: 100 MB) and copies files to local storage.
+// Handles picking external audio files (FR2).
+// Size gating (< 100 MB) happens after FFmpeg compression in
+// AudioCompressionService so large raw files (e.g., WAV) can be shrunk first.
 // ==============================================================================
 
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
-import 'package:path_provider/path_provider.dart';
 
 class PickedAudioResult {
   final String path;
@@ -25,10 +25,18 @@ class PickedAudioResult {
 }
 
 class AudioPickerService {
-  static const int maxFileSizeBytes = 100 * 1024 * 1024; // 100 MB cap (FR2)
-  static const List<String> allowedExtensions = ['mp3', 'm4a', 'wav', 'aac'];
+  static const List<String> allowedExtensions = [
+    'mp3',
+    'm4a',
+    'wav',
+    'aac',
+    'ogg',
+    'webm',
+    'flac',
+  ];
 
-  /// Prompts user to pick an audio file and copies it into app storage
+  /// Prompts the user to pick an audio file and returns its path and metadata.
+  /// Returns `null` if the user cancels the picker.
   Future<PickedAudioResult?> pickAudioFile() async {
     final files = await FilePicker.pickFiles(
       type: FileType.custom,
@@ -46,32 +54,11 @@ class AudioPickerService {
       throw Exception('Could not access the selected file path.');
     }
 
-    final sourceFile = File(sourcePath);
-    final fileSize = await sourceFile.length();
-
-    // Check 100 MB limit
-    if (fileSize > maxFileSizeBytes) {
-      throw Exception(
-        'Selected audio file is too large (${(fileSize / (1024 * 1024)).toStringAsFixed(1)} MB). '
-        'Maximum allowed size is 100 MB.',
-      );
-    }
-
-    // Copy to app storage so the file is not lost if moved outside
-    final appDir = await getApplicationDocumentsDirectory();
-    final importsDir = Directory('${appDir.path}/imported_audio');
-    if (!await importsDir.exists()) {
-      await importsDir.create(recursive: true);
-    }
-
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final extension = sourcePath.split('.').last;
-    final destinationPath = '${importsDir.path}/imported_$timestamp.$extension';
-
-    final savedFile = await sourceFile.copy(destinationPath);
+    final fileSize =
+        sourcePath.startsWith('content://') ? 0 : await File(sourcePath).length();
 
     return PickedAudioResult(
-      path: savedFile.path,
+      path: sourcePath,
       fileName: platformFile.name,
       sizeBytes: fileSize,
     );

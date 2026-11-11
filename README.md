@@ -9,15 +9,16 @@
 ## 🚀 Core Features (MVP)
 
 - **🎙️ Live Lecture Audio Recording (FR1):**
-  Records directly via device microphone configured natively to **16 kHz Mono 32 kbps AAC**, ensuring optimal transcription quality and small file sizes without heavy video or multi-channel overhead.
+  Records directly via device microphone configured natively to **44.1 kHz Mono 64 kbps AAC** with auto-gain (`AndroidAudioSource.mic`, Bluetooth hijack disabled), ensuring crisp bilingual transcription quality without multi-channel overhead.
 - **📁 Audio File Import (FR2):**
-  Supports uploading existing `.mp3`, `.m4a`, and `.wav` audio files up to **100 MB** with built-in size validation.
+  Supports picking `.mp3`, `.m4a`, `.wav`, `.aac`, `.ogg`, `.webm`, and `.flac` files, automatically compresses them via FFmpeg (`16 kHz Mono 32 kbps MP3`), validates that compressed size is under **100 MB**, and routes transcribable lectures straight to processing.
 - **⚡ Bilingual Speech-to-Text with Code-Switching (FR3):**
   Powered by **Groq Whisper-large-v3** using `verbose_json` for millisecond-level word and segment timestamps, featuring a custom vocabulary prompt to prevent unwanted translation of English technical terms within Arabic lectures.
 - **🧠 Academic Structured Summarization (FR4):**
-  Powered by **Google Gemini 1.5 Flash** with JSON Schema enforcement:
-  - **Overview:** High-level conceptual synthesis of the lecture.
-  - **Key Points:** 3 to 7 bullet points emphasizing major exam-relevant topics.
+  Powered by **Google Gemini 3 Flash Preview** with `responseJsonSchema` enforcement:
+  - **Overview:** Crisp conceptual synthesis of the lecture.
+  - **Topic Breakdown:** Chronological topic cards with clickable `[MM:SS]` audio timestamps.
+  - **Key Points:** High-yield bullet points emphasizing major exam-relevant topics.
   - **Key Terms & Definitions:** Glossary of technical terms encountered during the lecture.
 - **⏱️ Tap-to-Seek Synchronized Audio Player (FR8):**
   Tapping any transcript segment immediately seeks the audio player to that exact timestamp. The transcript actively highlights the currently playing segment in real time.
@@ -43,26 +44,29 @@ lib/
 │       └── qayd_theme.dart            # Material 3 Academic Indigo theme (Light & Dark)
 ├── data/
 │   ├── models/
-│   │   ├── folder_model.dart          # QaydFolder entity
-│   │   └── qayd_model.dart            # Qayd, TranscriptSegment, QaydSummary, KeyTerm
+│   │   ├── folder_model.dart             # QaydFolder entity
+│   │   └── qayd_model.dart               # Qayd, TranscriptSegment, QaydSummary, SummarySection, KeyTerm
 │   └── services/
-│       ├── audio_picker_service.dart  # FilePicker with 100 MB validation
-│       ├── audio_recording_service.dart# 16kHz Mono 32kbps AAC recording service
-│       ├── gemini_summary_service.dart# Gemini 1.5 Flash structured summary client
-│       ├── groq_whisper_service.dart  # Groq Whisper client with timestamped segments
-│       └── storage_service.dart       # Hive offline storage with orphan file protection
+│       ├── audio_compression_service.dart # FFmpeg 16kHz Mono 32kbps MP3 compressor (< 100 MB gate)
+│       ├── audio_picker_service.dart      # FilePicker for external lecture audio imports
+│       ├── audio_recording_service.dart   # 44.1kHz Mono 64kbps AAC mic recording service
+│       ├── gemini_summary_service.dart    # Gemini 3 Flash Preview structured summary client
+│       ├── groq_whisper_service.dart      # Groq Whisper client with timestamped segments
+│       └── storage_service.dart           # Hive offline storage with orphan file protection
 ├── providers/
-│   └── qayd_provider.dart             # Central ChangeNotifier orchestrating state & pipeline
+│   └── qayd_provider.dart                 # Central ChangeNotifier orchestrating state & pipeline
 ├── screens/
 │   ├── detail/
-│   │   └── detail_screen.dart         # S4: Audio player, Tap-to-Seek transcript & summary
+│   │   └── detail_screen.dart             # S4: Audio player, Tap-to-Seek transcript & summary
 │   ├── home/
-│   │   └── home_screen.dart           # S1: Folder chips, search, and lecture list
+│   │   └── home_screen.dart               # S1: Folder chips, search, and lecture list
 │   ├── processing/
-│   │   └── processing_screen.dart     # S3: Real-time multi-stage pipeline status checklist
+│   │   └── processing_screen.dart         # S3: Real-time multi-stage pipeline status checklist
 │   └── record/
-│       └── record_screen.dart         # S2: Visualizer, live timer, pause/resume/stop controls
-└── main.dart                          # App entry point, MultiProvider & MaterialApp
+│       └── record_screen.dart             # S2: Visualizer, live timer, pause/resume/stop controls
+├── widgets/
+│   └── qayd_actions.dart                  # Shared rename, move, edit transcript, and delete dialogs
+└── main.dart                              # App entry point, MultiProvider & MaterialApp
 ```
 
 ---
@@ -88,24 +92,24 @@ lib/
    flutter pub get
    ```
 
-3. **Run the App with API Keys:**
-   You can pass your API keys securely at runtime using `--dart-define`:
+3. **Configure & Run the App with API Keys:**
+   Copy `.env.example` to `.env`, add your `GROQ_API_KEY` and `GEMINI_API_KEY`, and pass it at runtime:
    ```bash
-   flutter run --dart-define=GROQ_API_KEY="your_groq_key_here" --dart-define=GEMINI_API_KEY="your_gemini_key_here"
+   flutter run --dart-define-from-file=.env
    ```
-   *(Alternatively, for local offline testing or emulator runs, you can specify your keys directly in `lib/core/constants/api_constants.dart`.)*
+   *(You can also pass keys inline via `--dart-define=GROQ_API_KEY="..." --dart-define=GEMINI_API_KEY="..."`.)*
 
 ---
 
 ## 🧪 Testing & Verification
 
-Qayd includes comprehensive unit and smoke tests covering model serialization, AI response parsing, state management, search, and localization:
+Qayd includes comprehensive unit and widget tests covering model serialization, AI response parsing, state management, file/folder actions, search, and localization:
 
 - **Run all automated tests:**
   ```bash
   flutter test
   ```
-  *(13/13 unit tests pass)*
+  *(27/27 tests pass)*
 
 - **Run Flutter static code analysis:**
   ```bash

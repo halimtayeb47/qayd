@@ -25,13 +25,8 @@ class ApiConstants {
 
   /// The validated code-switching prompt that enforces English technical terms
   /// inside Arabic speech without unwanted translations.
-  static const String groqPrompt = """
-      'Transcribe verbatim without translation. '
-      'Maintain strict code-switching between Arabic and English. '
-      'Transcribe Arabic speech in Arabic script and all technical terms, '
-      'programming concepts, and spoken English words in standard English Latin script: '
-      'API, database, backend, frontend, server, client, request, response, '
-      'array, loop, function, class, object, architecture, framework.""";
+  static const String groqPrompt =
+      'Transcribe verbatim without translation. Maintain strict code-switching between Arabic and English. Transcribe Arabic speech in Arabic script and all technical terms, programming concepts, and spoken English words in standard English Latin script: API, database, backend, frontend, server, client, request, response, array, loop, function, class, object, architecture, framework.';
   // ---------------------------------------------------------------------------
   // Google Gemini API (Academic Summarization)
   // ---------------------------------------------------------------------------

@@ -15,9 +15,12 @@ import '../models/folder_model.dart';
 class StorageService {
   static const String _qaydsBoxName = 'qayds_box';
   static const String _foldersBoxName = 'folders_box';
+  static const String _metaBoxName = 'meta_box';
+  static const String _demoSeededKey = 'demo_seeded';
 
   late Box<Map> _qaydsBox;
   late Box<Map> _foldersBox;
+  late Box<bool> _metaBox;
   bool _isInitialized = false;
 
   /// Initializes Hive database and opens the necessary boxes
@@ -25,7 +28,20 @@ class StorageService {
     await Hive.initFlutter();
     _qaydsBox = await Hive.openBox<Map>(_qaydsBoxName);
     _foldersBox = await Hive.openBox<Map>(_foldersBoxName);
+    _metaBox = await Hive.openBox<bool>(_metaBoxName);
     _isInitialized = true;
+  }
+
+  /// Whether starter demo content has already been seeded for this installation
+  bool get hasSeededDemo {
+    if (!_isInitialized) return false;
+    return _metaBox.get(_demoSeededKey) ?? false;
+  }
+
+  /// Marks starter demo content as seeded so deleted user items never resurrect
+  Future<void> markDemoSeeded() async {
+    if (!_isInitialized) return;
+    await _metaBox.put(_demoSeededKey, true);
   }
 
   // ---------------------------------------------------------------------------
@@ -114,7 +130,7 @@ class StorageService {
     if (!_isInitialized) return;
     // Unassign all Qayds in this folder before deleting it
     for (final qayd in getQaydsByFolder(folderId)) {
-      final updated = qayd.copyWith(folderId: null);
+      final updated = qayd.copyWith(clearFolderId: true);
       await saveQayd(updated);
     }
     await _foldersBox.delete(folderId);

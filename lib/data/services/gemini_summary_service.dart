@@ -3,7 +3,8 @@
 // File: lib/data/services/gemini_summary_service.dart
 //
 // Converts raw lecture transcripts into structured English study notes (FR4).
-// Uses Google Gemini 1.5 Flash with enforced JSON output.
+// Uses Google Gemini 3 Flash Preview with enforced responseJsonSchema output
+// and timestamp-aware topic breakdown sections.
 // ==============================================================================
 
 import 'dart:convert';
@@ -21,9 +22,82 @@ class GeminiSummaryService {
   })  : _dio = dio ?? Dio(),
         _apiKey = apiKey ?? ApiConstants.geminiApiKey;
 
+  static const Map<String, dynamic> _summaryJsonSchema = {
+    'type': 'object',
+    'properties': {
+      'overview': {
+        'type': 'string',
+        'description':
+            'A concise English overview proportional to transcript substance (1 plain sentence for brief/casual clips; 2-4 sentences for substantive lectures).',
+      },
+      'sections': {
+        'type': 'array',
+        'description':
+            'Chronological topic breakdown sections aligned to transcript [MM:SS] timestamps. Empty [] for brief casual clips.',
+        'items': {
+          'type': 'object',
+          'properties': {
+            'heading': {'type': 'string'},
+            'startSec': {'type': 'number'},
+            'summary': {'type': 'string'},
+          },
+          'required': ['heading', 'startSec', 'summary'],
+        },
+      },
+      'keyPoints': {
+        'type': 'array',
+        'description':
+            'Concrete takeaways actually discussed in the transcript. Empty [] when no substantive points exist.',
+        'items': {'type': 'string'},
+      },
+      'keyTerms': {
+        'type': 'array',
+        'description':
+            'Genuine technical or domain-specific terms explicitly used in the transcript. Empty [] when none exist.',
+        'items': {
+          'type': 'object',
+          'properties': {
+            'term': {'type': 'string'},
+            'definition': {'type': 'string'},
+          },
+          'required': ['term', 'definition'],
+        },
+      },
+    },
+    'required': ['overview', 'sections', 'keyPoints', 'keyTerms'],
+  };
+
+  /// Formats timestamped Whisper segments into compact `[MM:SS] <text>` lines
+  /// for Gemini input, falling back to plain [transcript] when segments are empty.
+  static String formatTranscriptForGemini({
+    required String transcript,
+    List<TranscriptSegment> segments = const [],
+  }) {
+    final buffer = StringBuffer();
+    for (final seg in segments) {
+      final text = seg.text.trim();
+      if (text.isEmpty) continue;
+      if (buffer.isNotEmpty) buffer.writeln();
+      buffer.write('[${_formatTimestamp(seg.startSec)}] $text');
+    }
+
+    if (buffer.isNotEmpty) {
+      return buffer.toString();
+    }
+    return transcript.trim();
+  }
+
+  static String _formatTimestamp(double seconds) {
+    final totalSec = seconds < 0 ? 0 : seconds.floor();
+    final minutes = (totalSec ~/ 60).toString().padLeft(2, '0');
+    final secs = (totalSec % 60).toString().padLeft(2, '0');
+    return '$minutes:$secs';
+  }
+
   /// Generates a structured English summary from a lecture transcript
   Future<QaydSummary> generateSummary({
     required String transcript,
+    List<TranscriptSegment> segments = const [],
     String? customApiKey,
   }) async {
     final key = customApiKey ?? _apiKey;
@@ -33,29 +107,34 @@ class GeminiSummaryService {
       );
     }
 
-    if (transcript.trim().isEmpty) {
+    final formattedTranscript = formatTranscriptForGemini(
+      transcript: transcript,
+      segments: segments,
+    );
+
+    if (formattedTranscript.isEmpty) {
       throw Exception('Cannot summarize an empty transcript.');
     }
 
-    // Academic Prompt enforcing English output and exact JSON schema
     const systemPrompt = '''
-You are an expert academic tutor for university students.
-Analyze the following lecture transcript (which may be in Arabic, English, or a mix of both) and produce high-quality, structured study notes.
+You are a precise academic note-taking assistant.
+Summarize the following transcript (which may be in Arabic, English, or a mix of both, and may include [MM:SS] timestamps) strictly from what was actually said.
 
 CRITICAL INSTRUCTIONS:
-1. The entire summary MUST be written in clear, academic ENGLISH, regardless of the spoken language.
-2. Provide:
-   - "overview": A comprehensive 2-3 paragraph academic overview explaining the core concepts.
-   - "keyPoints": An array of at least 4 clear, high-yield takeaways for exam preparation.
-   - "keyTerms": An array of objects with "term" and "definition" for all key technical terminology mentioned.
-3. Return ONLY valid JSON matching this exact structure:
-{
-  "overview": "...",
-  "keyPoints": ["...", "..."],
-  "keyTerms": [
-    {"term": "...", "definition": "..."}
-  ]
-}
+1. Write the entire summary in clear, natural, concise ENGLISH, regardless of the spoken language.
+2. NEVER invent, pad, or inflate content with filler or fake academic jargon:
+   - Match length and detail strictly to the transcript content.
+   - If the transcript is a brief greeting, small talk, or lacks substantive information (e.g., "Hi, how are you?"), state that plainly in 1 concise sentence in "overview" and return empty arrays [] for "sections", "keyPoints", and "keyTerms".
+   - Do NOT invent abstract concepts (like "communicative rapport" or "interpersonal communication") when none were discussed.
+3. For substantive lectures or presentations:
+   - "overview": A crisp 2-4 sentence academic overview summarizing the core topic and scope.
+   - "sections": Chronological topic breakdown cards (2-6 distinct topics when multiple ideas exist; empty [] for short single-topic clips). Each item needs:
+     * "heading": Short scannable topic title.
+     * "startSec": Numeric start time in seconds converted from the matching [MM:SS] timestamp (for example [02:30] -> 150). Use 0 if no timestamps are present.
+     * "summary": 1-2 clear sentences explaining what was actually covered.
+   - "keyPoints": Concrete, distinct takeaways actually mentioned in the transcript (up to 6 bullets; do not pad with filler).
+   - "keyTerms": Genuine technical or domain-specific terms explicitly used in the transcript with crisp definitions ("term" and "definition"). Return [] if none exist.
+4. Return ONLY valid JSON adhering strictly to the schema.
 ''';
 
     final requestBody = {
@@ -63,13 +142,14 @@ CRITICAL INSTRUCTIONS:
         {
           'parts': [
             {
-              'text': '$systemPrompt\n\nLecture Transcript:\n$transcript',
+              'text': '$systemPrompt\n\nLecture Transcript:\n$formattedTranscript',
             }
           ]
         }
       ],
       'generationConfig': {
         'responseMimeType': 'application/json',
+        'responseJsonSchema': _summaryJsonSchema,
         'temperature': 0.2,
       }
     };
@@ -94,7 +174,12 @@ CRITICAL INSTRUCTIONS:
       return parseGeminiResponse(data);
     } on DioException catch (e) {
       final statusCode = e.response?.statusCode;
-      final errorMsg = e.response?.data?['error']?['message'] ?? e.message;
+      final errorData = e.response?.data;
+      String? errorMsg;
+      if (errorData is Map && errorData['error'] is Map) {
+        errorMsg = errorData['error']['message']?.toString();
+      }
+      errorMsg ??= e.message;
 
       if (statusCode == 400) {
         throw Exception('Gemini Bad Request (400): $errorMsg');
@@ -112,7 +197,8 @@ CRITICAL INSTRUCTIONS:
     }
   }
 
-  /// Parses the raw Gemini response JSON into a QaydSummary object
+  /// Parses the raw Gemini response JSON into a QaydSummary object,
+  /// safely skipping any reasoning/thinking parts (`thought: true`).
   static QaydSummary parseGeminiResponse(Map<String, dynamic> data) {
     try {
       final candidates = data['candidates'] as List?;
@@ -120,13 +206,26 @@ CRITICAL INSTRUCTIONS:
         throw Exception('No summary candidates returned from Gemini.');
       }
 
-      final content = candidates[0]['content'];
-      final parts = content['parts'] as List?;
+      final firstCandidate = candidates[0] as Map?;
+      final content = firstCandidate?['content'] as Map?;
+      final parts = content?['parts'] as List?;
       if (parts == null || parts.isEmpty) {
         throw Exception('No content parts found in Gemini response.');
       }
 
-      final rawText = parts[0]['text'] as String? ?? '{}';
+      String? rawText;
+      for (final part in parts) {
+        if (part is! Map) continue;
+        if (part['thought'] == true) continue;
+        final text = part['text'];
+        if (text is String && text.trim().isNotEmpty) {
+          rawText = text;
+        }
+      }
+
+      if (rawText == null) {
+        throw Exception('No non-thought JSON text found in Gemini response.');
+      }
 
       // Clean markdown code blocks if present (e.g. ```json ... ```)
       String cleanJson = rawText.trim();
