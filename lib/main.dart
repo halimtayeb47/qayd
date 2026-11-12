@@ -10,6 +10,7 @@ import 'data/services/audio_recording_service.dart';
 import 'data/services/audio_picker_service.dart';
 import 'providers/qayd_provider.dart';
 import 'screens/home/home_screen.dart';
+import 'screens/splash/qayd_splash_gate.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -78,7 +79,9 @@ class QaydApp extends StatelessWidget {
               GlobalWidgetsLocalizations.delegate,
               GlobalCupertinoLocalizations.delegate,
             ],
-            home: const HomeScreen(),
+            home: const QaydSplashGate(
+              child: HomeScreen(),
+            ),
           );
         },
       ),
