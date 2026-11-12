@@ -34,14 +34,20 @@ class _QaydSplashGateState extends State<QaydSplashGate>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 4000),
+      duration: const Duration(milliseconds: 2000),
     )..addStatusListener((status) {
         if (status == AnimationStatus.completed && mounted) {
           setState(() => _completed = true);
         }
       });
 
-    _controller.forward();
+    // Wait until the first frame is laid out and rasterized on cold start
+    // before starting the stroke-by-stroke drawing animation.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _controller.forward(from: 0.0);
+      }
+    });
   }
 
   @override
@@ -72,26 +78,30 @@ class _QaydSplashGateState extends State<QaydSplashGate>
               builder: (context, _) {
                 final t = _controller.value;
 
-                // Fade out overlay during the final 20% (0.80 -> 1.00)
-                final fadeOut = t <= 0.80
+                // Fade out overlay during the final 18% (0.82 -> 1.00)
+                final fadeOut = t <= 0.82
                     ? 1.0
-                    : (1.0 - ((t - 0.80) / 0.20)).clamp(0.0, 1.0);
+                    : (1.0 - ((t - 0.82) / 0.18)).clamp(0.0, 1.0);
 
-                // Stage timings (normalized within 0.0 -> 0.78)
+                // Small initial warm-up window (0.0 -> 0.06) so cold-start shader compilation
+                // never clips the beginning of the circular Qaf stroke
+                final animT = ((t - 0.06) / 0.76).clamp(0.0, 1.0);
+
+                // Stage timings (normalized within animT 0.0 -> 1.0)
                 final ringProgress = Curves.easeInOutCubic.transform(
-                  (t / 0.42).clamp(0.0, 1.0),
+                  (animT / 0.52).clamp(0.0, 1.0),
                 );
                 final tailProgress = Curves.easeOutCubic.transform(
-                  ((t - 0.32) / 0.26).clamp(0.0, 1.0),
+                  ((animT - 0.40) / 0.32).clamp(0.0, 1.0),
                 );
                 final dot1Scale = Curves.elasticOut.transform(
-                  ((t - 0.48) / 0.26).clamp(0.0, 1.0),
+                  ((animT - 0.60) / 0.32).clamp(0.0, 1.0),
                 );
                 final dot2Scale = Curves.elasticOut.transform(
-                  ((t - 0.56) / 0.26).clamp(0.0, 1.0),
+                  ((animT - 0.68) / 0.32).clamp(0.0, 1.0),
                 );
                 final textOpacity = Curves.easeOut.transform(
-                  ((t - 0.45) / 0.25).clamp(0.0, 1.0),
+                  ((animT - 0.55) / 0.32).clamp(0.0, 1.0),
                 );
 
                 return Opacity(
