@@ -142,7 +142,7 @@ class _QaydSplashGateState extends State<QaydSplashGate>
                                   ),
                                   const SizedBox(height: 6),
                                   Text(
-                                    'العلم في الصغر كالنقش على الحجر',
+                                    'قَيِّدُوا الْعِلْمَ بِالْكِتَابِ',
                                     style:
                                         theme.textTheme.bodyMedium?.copyWith(
                                       color: theme.colorScheme.onSurfaceVariant,
