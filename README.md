@@ -132,8 +132,8 @@ Qayd enforces automated testing across all business logic, data models, AI parsi
 
 ## 👥 Contributors & Credits
 
-- **Halim Tayeb** (Student ID: `443054143`)
-- **Wasel Mohammed Almahri** (Student ID: `451014913`)
+- **Halim Tayeb**
+- **Wasel Mohammed Almahri**
 
 **Course Supervisor:** Mr. Ahmed Almatrafi  
 *Faculty of Computer Science & Information Technology, Islamic University of Madinah*  
