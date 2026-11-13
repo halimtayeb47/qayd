@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-labelledby="title desc">
+  <title id="title">qayd qaf monogram</title>
+  <desc id="desc">A circular q and Arabic qaf-inspired monogram with two teal dots</desc>
+  <circle cx="54" cy="55" r="35" fill="none" stroke="#2A4D82" stroke-width="7"/>
+  <path d="M72 71 C74 87 69 101 58 111" fill="none" stroke="#2A4D82" stroke-width="7" stroke-linecap="round"/>
+  <circle cx="43" cy="11" r="4.5" fill="#0B8072"/>
+  <circle cx="65" cy="11" r="4.5" fill="#0B8072"/>
+</svg>
