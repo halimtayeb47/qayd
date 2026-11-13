@@ -8,7 +8,8 @@
 
 | Item | Detail |
 |------|--------|
-| **Team** | Halim Tayeb, Wasel (2 developers) |
+| **Team** | Halim Tayeb (ID: 443054143), Wasel Mohammed Almahri (ID: 451014913) |
+| **Supervisor** | Mr. Ahmed Almatrafi |
 | **Timeline** | 5 weeks — kickoff 2026-10-09, target finish ~2026-11-13 |
 | **Methodology** | SDLC (requirements → design → implementation → testing → deployment), run iteratively because of the compressed timeline |
 | **Primary goal** | A working, demo-ready Flutter app; documentation kept light and practical |
@@ -142,8 +143,11 @@ Core data model — a **Qayd**: `id`, `title`, `createdAt`, `audioPath`, `transc
 
 A user can open qayd, record or upload a lecture, watch it get transcribed and summarized, read a clear structured summary, and find that Qayd saved in their list the next time they open the app — in both Arabic and English, without crashing.
 
-## 10. This week's immediate next steps
+## 10. Roadmap Delivery Status (100% Completed)
 
-1. Confirm this roadmap (and tell me anything you'd change).
-2. Create the OpenAI and Gemini API keys.
-3. I draft the light SRS + wireframes and set up the Flutter folder structure + navigation shell.
+- [x] **Week 1 (Oct 9–15):** SRS, wireframes, M3 Academic Indigo theme, and Flutter app skeleton.
+- [x] **Week 2 (Oct 16–22):** Audio capture & compression pipeline, Groq Whisper integration, and processing flow.
+- [x] **Week 3 (Oct 23–29):** Google Gemini structured summarization, DetailScreen dual-view tabs, and Hive CE persistence.
+- [x] **Week 4 (Oct 30–Nov 5):** Automated test hardening, edge case recovery, folder management, and Tap-to-Seek player.
+- [x] **Week 5 (Nov 6–13):** Speech auto-detection, 4-layer hallucination shield, publication-grade Arabic PDF export, animated Qaf splash screen, Android 12+ splash gate, and comprehensive documentation report.
+- [x] **Quality Gate:** 40/40 tests passing (`flutter test`), 0 issues (`flutter analyze`). Deliverable merged to `main`.
