@@ -94,10 +94,12 @@ class GeminiSummaryService {
     return '$minutes:$secs';
   }
 
-  /// Generates a structured English summary from a lecture transcript
+  /// Generates a structured academic summary from a lecture transcript
+  /// in either English ('en') or Arabic ('ar') per user preference.
   Future<QaydSummary> generateSummary({
     required String transcript,
     List<TranscriptSegment> segments = const [],
+    String summaryLanguage = 'en',
     String? customApiKey,
   }) async {
     final key = customApiKey ?? _apiKey;
@@ -116,7 +118,29 @@ class GeminiSummaryService {
       throw Exception('Cannot summarize an empty transcript.');
     }
 
-    const systemPrompt = '''
+    final systemPrompt = summaryLanguage == 'ar'
+        ? '''
+أنت مساعد أكاديمي رفيع المستوى ودقيق في تلخيص المحاضرات والشروحات الجامعية.
+قم بتلخيص نص المحاضرة التالي (والذي قد يكون بالعربية أو الإنجليزية أو خليطاً بينهما مع طوابع زمنية [MM:SS]) بدقة متناهية ومباشرة من المحتوى الفعلي فقط.
+
+تعليمات حرجة:
+1. اكتب كامل الملخص بلغة عربية فصحى أكاديمية، واضحة ورصينة وموجزة.
+2. حافظ على المصطلحات التقنية والبرمجية والعلمية بالحروف اللاتينية الإنجليزية الأصلية مع شرحها (مثل: API، Database، Algorithm، Data Structure).
+3. لا تختلق ولا تضخم محتوى غير موجود:
+   - طابق التفاصيل تماماً مع ما قيل في المحاضرة.
+   - إذا كانت المحاضرة مجرد تحية قصيرة أو كلام عابر (مثل: "السلام عليكم كيف الحال")، اذكر ذلك بجملة واحدة في "overview" وأرجع مصفوفات فارغة [] في "sections" و "keyPoints" و "keyTerms".
+   - لا تخترع مفاهيم مجردة لم تُذكر أبداً في النص.
+4. للمحاضرات والشروحات العلمية:
+   - "overview": فقرة تمهيدية أكاديمية من 2 إلى 4 جمل تشرح جوهر الموضوع ونطاق المحاضرة.
+   - "sections": محاور زمنية تسلسلية مرتبة زمنياً (من 2 إلى 6 أقسام عند تعدد الموضوعات؛ مصفوفة فارغة [] للمقاطع القصيرة أحادية الفكرة). يتضمن كل عنصر:
+     * "heading": عنوان موجز وسهل القراءة للمحور.
+     * "startSec": زمن البداية بالثواني محولاً من طابع [MM:SS] (مثال: [02:30] -> 150). استخدم 0 إذا لم توجد طوابع.
+     * "summary": جملة أو جملتان تشرحان ما تم تناوله بالفعل.
+   - "keyPoints": أهم النقاط المستفادة والأفكار الأساسية المذكورة في المحاضرة (حتى 6 نقاط واضحة دون حشو).
+   - "keyTerms": المصطلحات العلمية والتقنية المذكورة صراحة مع تعريف موجز ("term" و "definition"). أرجع [] إذا لم توجد مصطلحات.
+5. أرجع الإخراج بصيغة JSON فقط متطابقاً تماماً مع المخطط المرفق.
+'''
+        : '''
 You are a precise academic note-taking assistant.
 Summarize the following transcript (which may be in Arabic, English, or a mix of both, and may include [MM:SS] timestamps) strictly from what was actually said.
 

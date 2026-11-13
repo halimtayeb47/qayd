@@ -20,6 +20,7 @@ class RecordScreen extends StatefulWidget {
 
 class _RecordScreenState extends State<RecordScreen> {
   final TextEditingController _titleController = TextEditingController();
+  String _summaryLanguage = 'ar';
 
   @override
   void initState() {
@@ -63,11 +64,12 @@ class _RecordScreenState extends State<RecordScreen> {
       ),
     );
 
-    // Trigger pipeline in background
+    // Trigger pipeline in background with user selected summary language
     try {
       final title = _titleController.text.trim();
       await provider.stopRecordingAndProcess(
         title: title.isNotEmpty ? title : null,
+        summaryLanguage: _summaryLanguage,
       );
     } catch (_) {
       // Errors are caught and handled inside ProcessingScreen via provider
@@ -97,6 +99,68 @@ class _RecordScreenState extends State<RecordScreen> {
                   labelText: isArabic ? 'عنوان المحاضرة (اختياري)' : 'Lecture Title (Optional)',
                   hintText: isArabic ? 'مثال: قواعد البيانات - المحاضرة 4' : 'e.g. Database Systems - Week 4',
                   prefixIcon: const Icon(Icons.edit_note),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // Summary Language Selector (AR / EN)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerLow,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: theme.colorScheme.outlineVariant),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.translate,
+                            size: 18,
+                            color: theme.colorScheme.primary,
+                          ),
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              isArabic ? 'لغة التلخيص:' : 'Summary Language:',
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.w600,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    SegmentedButton<String>(
+                      showSelectedIcon: false,
+                      style: SegmentedButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                      ),
+                      segments: const [
+                        ButtonSegment(
+                          value: 'ar',
+                          label: Text('العربية'),
+                        ),
+                        ButtonSegment(
+                          value: 'en',
+                          label: Text('English'),
+                        ),
+                      ],
+                      selected: {_summaryLanguage},
+                      onSelectionChanged: (newSelection) {
+                        setState(() {
+                          _summaryLanguage = newSelection.first;
+                        });
+                      },
+                    ),
+                  ],
                 ),
               ),
               const Spacer(),

@@ -49,11 +49,175 @@ void main() {
       );
     });
 
-    test('groqPrompt is a single clean line with no inner wrapping quotes', () {
+    test('groqPrompt is a single clean lexical glossary without instruction prose',
+        () {
       expect(ApiConstants.groqPrompt.contains('\n'), false);
       expect(ApiConstants.groqPrompt.contains("'"), false);
-      expect(ApiConstants.groqPrompt, startsWith('Transcribe verbatim'));
+      expect(ApiConstants.groqPrompt.toLowerCase(), isNot(contains('transcribe')));
+      expect(ApiConstants.groqPrompt.toLowerCase(), isNot(contains('translate')));
       expect(ApiConstants.groqPrompt, contains('API, database'));
+    });
+
+    test('Filters known Whisper subtitle hallucinations and prompt echoes cleanly',
+        () {
+      final mockGroqResponse = {
+        'task': 'transcribe',
+        'language': 'Arabic',
+        'duration': 35.0,
+        'text':
+            'السلام عليكم API and database connect the backend. ترجمة نانسي قنقر. API, database, backend, frontend, server, client. شكراً للمشاهدة!',
+        'segments': [
+          {
+            'id': 0,
+            'start': 0.0,
+            'end': 8.0,
+            'text': ' السلام عليكم API and database connect the backend.',
+            'no_speech_prob': 0.02,
+            'avg_logprob': -0.15,
+          },
+          {
+            'id': 1,
+            'start': 8.0,
+            'end': 12.0,
+            'text': ' ترجمة نانسي قنقر.',
+            'no_speech_prob': 0.30,
+            'avg_logprob': -0.45,
+          },
+          {
+            'id': 2,
+            'start': 12.0,
+            'end': 18.0,
+            'text':
+                ' API, database, backend, frontend, server, client.',
+            'no_speech_prob': 0.25,
+            'avg_logprob': -0.40,
+          },
+          {
+            'id': 3,
+            'start': 18.0,
+            'end': 25.0,
+            'text': ' Transcribe Arabic speech in Arabic script and so on.',
+            'no_speech_prob': 0.15,
+            'avg_logprob': -0.35,
+          },
+          {
+            'id': 4,
+            'start': 25.0,
+            'end': 30.0,
+            'text': ' شكراً للمشاهدة!',
+            'no_speech_prob': 0.40,
+            'avg_logprob': -0.50,
+          },
+          {
+            'id': 5,
+            'start': 30.0,
+            'end': 35.0,
+            'text': ' كلام غير واضح في الصمت',
+            'no_speech_prob': 0.85,
+            'avg_logprob': -1.40,
+          },
+        ],
+      };
+
+      final result =
+          GroqWhisperService.parseTranscriptionResponse(mockGroqResponse);
+
+      expect(result.segments.length, 1);
+      expect(result.segments.first.text,
+          'السلام عليكم API and database connect the backend.');
+      expect(result.text,
+          'السلام عليكم API and database connect the backend.');
+      expect(result.language, QaydLanguage.mixed);
+    });
+
+    test('Returns empty text when entire response is a Whisper credit hallucination',
+        () {
+      final mockGroqResponse = {
+        'task': 'transcribe',
+        'language': 'Arabic',
+        'duration': 5.0,
+        'text': 'ترجمة نانسي قنقر.',
+        'segments': [
+          {
+            'id': 0,
+            'start': 0.0,
+            'end': 5.0,
+            'text': 'ترجمة نانسي قنقر.',
+            'no_speech_prob': 0.2,
+            'avg_logprob': -0.3,
+          },
+        ],
+      };
+
+      final result =
+          GroqWhisperService.parseTranscriptionResponse(mockGroqResponse);
+
+      expect(result.segments, isEmpty);
+      expect(result.text, isEmpty);
+    });
+
+    test('Whisper repetition loops drop consecutive duplicate segments', () {
+      final mockGroqResponse = {
+        'task': 'transcribe',
+        'language': 'Arabic',
+        'duration': 15.0,
+        'text': 'شرح المفهوم الأول شرح المفهوم الأول شرح المفهوم الأول',
+        'segments': [
+          {
+            'id': 0,
+            'start': 0.0,
+            'end': 5.0,
+            'text': 'شرح المفهوم الأول',
+            'no_speech_prob': 0.05,
+          },
+          {
+            'id': 1,
+            'start': 5.0,
+            'end': 10.0,
+            'text': 'شرح المفهوم الأول',
+            'no_speech_prob': 0.05,
+          },
+          {
+            'id': 2,
+            'start': 10.0,
+            'end': 15.0,
+            'text': 'شرح المفهوم الأول',
+            'no_speech_prob': 0.05,
+          },
+        ],
+      };
+
+      final result =
+          GroqWhisperService.parseTranscriptionResponse(mockGroqResponse);
+
+      expect(result.segments.length, 1);
+      expect(result.segments.first.text, 'شرح المفهوم الأول');
+      expect(result.text, 'شرح المفهوم الأول');
+    });
+
+    test('Detects pure English, pure Arabic, and mixed code-switching accurately', () {
+      final arabicResp = {
+        'text': 'محاضرة في نظم التشغيل وإدارة العمليات',
+        'language': 'Arabic',
+        'segments': [],
+      };
+      final englishResp = {
+        'text': 'Operating systems process and memory management',
+        'language': 'English',
+        'segments': [],
+      };
+      final mixedResp = {
+        'text': 'نظام التشغيل يستخدم Process و Thread في الذاكرة',
+        'language': 'Arabic',
+        'segments': [],
+      };
+
+      expect(GroqWhisperService.parseTranscriptionResponse(arabicResp).language,
+          QaydLanguage.ar);
+      expect(GroqWhisperService.parseTranscriptionResponse(englishResp).language,
+          QaydLanguage.en);
+      expect(GroqWhisperService.parseTranscriptionResponse(mixedResp).language,
+          QaydLanguage.mixed);
     });
   });
 

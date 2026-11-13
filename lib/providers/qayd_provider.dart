@@ -324,7 +324,11 @@ class QaydProvider extends ChangeNotifier {
   }
 
   /// Stops recording and triggers the AI processing pipeline
-  Future<Qayd> stopRecordingAndProcess({String? title}) async {
+  Future<Qayd> stopRecordingAndProcess({
+    String? title,
+    String summaryLanguage = 'en',
+    String? audioLanguage,
+  }) async {
     // Clear any previously completed activeQayd synchronously so ProcessingScreen
     // does not immediately auto-navigate to the previous lecture while stopRecording() awaits.
     _activeQayd = null;
@@ -354,6 +358,8 @@ class QaydProvider extends ChangeNotifier {
         title: finalTitle,
         durationSec: duration,
         folderId: _selectedFolderId,
+        summaryLanguage: summaryLanguage,
+        audioLanguage: audioLanguage,
       );
     } catch (e) {
       _isRecording = false;
@@ -395,6 +401,8 @@ class QaydProvider extends ChangeNotifier {
     required String audioPath,
     required String fileName,
     String? title,
+    String summaryLanguage = 'ar',
+    String? audioLanguage,
   }) async {
     final finalTitle = title?.trim().isNotEmpty == true
         ? title!.trim()
@@ -405,11 +413,17 @@ class QaydProvider extends ChangeNotifier {
       title: finalTitle,
       durationSec: 0, // Will be updated by Whisper duration
       folderId: _selectedFolderId,
+      summaryLanguage: summaryLanguage,
+      audioLanguage: audioLanguage,
     );
   }
 
   /// Convenience wrapper that picks, compresses, and processes an imported audio file.
-  Future<Qayd?> importAudioAndProcess({String? title}) async {
+  Future<Qayd?> importAudioAndProcess({
+    String? title,
+    String summaryLanguage = 'ar',
+    String? audioLanguage,
+  }) async {
     try {
       final picked = await pickAudioForImport();
       if (picked == null) return null; // User cancelled
@@ -421,6 +435,8 @@ class QaydProvider extends ChangeNotifier {
         audioPath: compressed.path,
         fileName: picked.fileName,
         title: title,
+        summaryLanguage: summaryLanguage,
+        audioLanguage: audioLanguage,
       );
     } catch (e) {
       _errorMessage = e.toString();
@@ -439,6 +455,8 @@ class QaydProvider extends ChangeNotifier {
     required String title,
     required int durationSec,
     String? folderId,
+    String summaryLanguage = 'ar',
+    String? audioLanguage,
   }) async {
     _errorMessage = null;
     _errorQaydId = null;
@@ -452,6 +470,7 @@ class QaydProvider extends ChangeNotifier {
       audioPath: audioPath,
       status: QaydStatus.transcribing,
       folderId: folderId,
+      summaryLanguage: summaryLanguage,
     );
     _activeQayd = qayd;
     _processingStatusMessage = 'Transcribing audio with Groq Whisper...';
@@ -462,6 +481,7 @@ class QaydProvider extends ChangeNotifier {
       // 2. Transcribe Audio (FR3)
       final transcriptResult = await whisperService.transcribeAudio(
         audioFilePath: audioPath,
+        audioLanguage: audioLanguage,
       );
 
       final finalDuration = durationSec > 0
@@ -480,20 +500,24 @@ class QaydProvider extends ChangeNotifier {
       _activeQayd = qayd;
       await storageService.saveQayd(qayd);
 
-      _processingStatusMessage = 'Generating academic summary with Gemini...';
+      _processingStatusMessage = summaryLanguage == 'ar'
+          ? 'جاري توليد الملخص الأكاديمي بالذكاء الاصطناعي...'
+          : 'Generating academic summary with Gemini...';
       _processingProgress = 0.65;
       notifyListeners();
 
-      // 3. Generate English Summary (FR4)
+      // 3. Generate Summary in User's Requested Language (FR4)
       try {
         final summary = await summaryService.generateSummary(
           transcript: transcriptResult.text,
           segments: transcriptResult.segments,
+          summaryLanguage: summaryLanguage,
         );
 
         qayd = qayd.copyWith(
           summary: summary,
           status: QaydStatus.done,
+          summaryLanguage: summaryLanguage,
         );
         _processingStatusMessage = 'Done!';
         _processingProgress = 1.0;
@@ -527,7 +551,7 @@ class QaydProvider extends ChangeNotifier {
   }
 
   /// Retries summarization for a transcribed Qayd (e.g. after fixing rate limit)
-  Future<void> retrySummary(String qaydId) async {
+  Future<void> retrySummary(String qaydId, {String? summaryLanguage}) async {
     var qayd = storageService.getQayd(qaydId);
     if (qayd == null) {
       _errorMessage = 'Lecture not found.';
@@ -543,22 +567,28 @@ class QaydProvider extends ChangeNotifier {
       return;
     }
 
+    final targetLang = summaryLanguage ?? qayd.summaryLanguage;
+
     _isRetryingSummary = true;
     _errorMessage = null;
     _errorQaydId = null;
     _processingProgress = 0.65;
-    _processingStatusMessage = 'Regenerating summary with Gemini...';
+    _processingStatusMessage = targetLang == 'ar'
+        ? 'جاري توليد الملخص بالعربية...'
+        : 'Regenerating summary with Gemini...';
     notifyListeners();
 
     try {
       final summary = await summaryService.generateSummary(
         transcript: qayd.transcript,
         segments: qayd.segments,
+        summaryLanguage: targetLang,
       );
 
       qayd = qayd.copyWith(
         summary: summary,
         status: QaydStatus.done,
+        summaryLanguage: targetLang,
       );
       await storageService.saveQayd(qayd);
       _activeQayd = qayd;
@@ -573,6 +603,14 @@ class QaydProvider extends ChangeNotifier {
       _isRetryingSummary = false;
       notifyListeners();
     }
+  }
+
+  /// Convenient helper to regenerate summary in a specific language (EN or AR)
+  Future<void> regenerateSummaryWithLanguage(
+    String qaydId,
+    String languageCode,
+  ) async {
+    return retrySummary(qaydId, summaryLanguage: languageCode);
   }
 
   // ---------------------------------------------------------------------------

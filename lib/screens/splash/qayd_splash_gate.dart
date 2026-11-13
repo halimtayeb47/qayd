@@ -10,7 +10,6 @@
 // ==============================================================================
 
 import 'package:flutter/material.dart';
-import '../../core/theme/qayd_theme.dart';
 
 class QaydSplashGate extends StatefulWidget {
   final Widget child;
@@ -58,119 +57,117 @@ class _QaydSplashGateState extends State<QaydSplashGate>
 
   @override
   Widget build(BuildContext context) {
-    if (_completed) {
-      return widget.child;
-    }
-
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final colorScheme = theme.colorScheme;
 
     return Stack(
       children: [
-        // Pre-mount HomeScreen underneath for instant transition & test compatibility
-        widget.child,
-
-        // Animated Stroke-by-Stroke Splash Overlay
-        Positioned.fill(
-          child: IgnorePointer(
-            child: AnimatedBuilder(
-              animation: _controller,
-              builder: (context, _) {
-                final t = _controller.value;
-
-                // Fade out overlay during the final 18% (0.82 -> 1.00)
-                final fadeOut = t <= 0.82
-                    ? 1.0
-                    : (1.0 - ((t - 0.82) / 0.18)).clamp(0.0, 1.0);
-
-                // Small initial warm-up window (0.0 -> 0.06) so cold-start shader compilation
-                // never clips the beginning of the circular Qaf stroke
-                final animT = ((t - 0.06) / 0.76).clamp(0.0, 1.0);
-
-                // Stage timings (normalized within animT 0.0 -> 1.0)
-                final ringProgress = Curves.easeInOutCubic.transform(
-                  (animT / 0.52).clamp(0.0, 1.0),
-                );
-                final tailProgress = Curves.easeOutCubic.transform(
-                  ((animT - 0.40) / 0.32).clamp(0.0, 1.0),
-                );
-                final dot1Scale = Curves.elasticOut.transform(
-                  ((animT - 0.60) / 0.32).clamp(0.0, 1.0),
-                );
-                final dot2Scale = Curves.elasticOut.transform(
-                  ((animT - 0.68) / 0.32).clamp(0.0, 1.0),
-                );
-                final textOpacity = Curves.easeOut.transform(
-                  ((animT - 0.55) / 0.32).clamp(0.0, 1.0),
-                );
-
-                return Opacity(
-                  opacity: fadeOut,
-                  child: ColoredBox(
-                    color: isDark
-                        ? const Color(0xFF10131A)
-                        : const Color(0xFFFAFBFD),
-                    child: Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          SizedBox(
-                            width: 148,
-                            height: 148,
-                            child: CustomPaint(
-                              painter: _QaydMonogramPainter(
-                                ringProgress: ringProgress,
-                                tailProgress: tailProgress,
-                                dot1Scale: dot1Scale,
-                                dot2Scale: dot2Scale,
-                                primaryColor: isDark
-                                    ? const Color(0xFF9DB8E8)
-                                    : QaydTheme.brandIndigo,
-                                secondaryColor: isDark
-                                    ? const Color(0xFF5FD1BE)
-                                    : QaydTheme.brandTeal,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                          Opacity(
-                            opacity: textOpacity,
-                            child: Transform.translate(
-                              offset: Offset(0, (1.0 - textOpacity) * 10),
-                              child: Column(
-                                children: [
-                                  Text(
-                                    'قَيْد  •  Qayd',
-                                    style: theme.textTheme.headlineSmall
-                                        ?.copyWith(
-                                      fontWeight: FontWeight.bold,
-                                      color: isDark
-                                          ? const Color(0xFF9DB8E8)
-                                          : QaydTheme.brandIndigo,
-                                      letterSpacing: 0.8,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    'قَيِّدُوا الْعِلْمَ بِالْكِتَابِ',
-                                    style:
-                                        theme.textTheme.bodyMedium?.copyWith(
-                                      color: theme.colorScheme.onSurfaceVariant,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
+        // Pre-mount child in a fixed tree slot so its State is preserved while
+        // touch and screen-reader semantics stay gated during splash.
+        ExcludeSemantics(
+          excluding: !_completed,
+          child: AbsorbPointer(
+            absorbing: !_completed,
+            child: widget.child,
           ),
         ),
+
+        // Animated Stroke-by-Stroke Splash Overlay
+        if (!_completed)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: AnimatedBuilder(
+                animation: _controller,
+                builder: (context, _) {
+                  final t = _controller.value;
+
+                  // Fade out overlay during the final 18% (0.82 -> 1.00)
+                  final fadeOut = t <= 0.82
+                      ? 1.0
+                      : (1.0 - ((t - 0.82) / 0.18)).clamp(0.0, 1.0);
+
+                  // Small initial warm-up window (0.0 -> 0.06) so cold-start shader compilation
+                  // never clips the beginning of the circular Qaf stroke
+                  final animT = ((t - 0.06) / 0.76).clamp(0.0, 1.0);
+
+                  // Stage timings (normalized within animT 0.0 -> 1.0)
+                  final ringProgress = Curves.easeInOutCubic.transform(
+                    (animT / 0.52).clamp(0.0, 1.0),
+                  );
+                  final tailProgress = Curves.easeOutCubic.transform(
+                    ((animT - 0.40) / 0.32).clamp(0.0, 1.0),
+                  );
+                  final dot1Scale = Curves.elasticOut.transform(
+                    ((animT - 0.60) / 0.32).clamp(0.0, 1.0),
+                  );
+                  final dot2Scale = Curves.elasticOut.transform(
+                    ((animT - 0.68) / 0.32).clamp(0.0, 1.0),
+                  );
+                  final textOpacity = Curves.easeOut.transform(
+                    ((animT - 0.55) / 0.32).clamp(0.0, 1.0),
+                  );
+
+                  return Opacity(
+                    opacity: fadeOut,
+                    child: ColoredBox(
+                      color: colorScheme.surface,
+                      child: Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            ExcludeSemantics(
+                              child: SizedBox(
+                                width: 148,
+                                height: 148,
+                                child: CustomPaint(
+                                  painter: _QaydMonogramPainter(
+                                    ringProgress: ringProgress,
+                                    tailProgress: tailProgress,
+                                    dot1Scale: dot1Scale,
+                                    dot2Scale: dot2Scale,
+                                    primaryColor: colorScheme.primary,
+                                    secondaryColor: colorScheme.secondary,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+                            Opacity(
+                              opacity: textOpacity,
+                              child: Transform.translate(
+                                offset: Offset(0, (1.0 - textOpacity) * 10),
+                                child: Column(
+                                  children: [
+                                    Text(
+                                      'قَيْد  •  Qayd',
+                                      style: theme.textTheme.headlineSmall
+                                          ?.copyWith(
+                                        fontWeight: FontWeight.bold,
+                                        color: colorScheme.primary,
+                                        letterSpacing: 0.8,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      'قَيِّدُوا الْعِلْمَ بِالْكِتَابِ',
+                                      style:
+                                          theme.textTheme.bodyMedium?.copyWith(
+                                        color: colorScheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
       ],
     );
   }

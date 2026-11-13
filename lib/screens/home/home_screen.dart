@@ -151,6 +151,66 @@ class _HomeScreenState extends State<HomeScreen> {
       }
       if (!mounted) return;
 
+      // Prompt user for preferred summary language (defaults to Arabic)
+      var chosenLanguage = 'ar';
+      final langResult = await showModalBottomSheet<String>(
+        context: context,
+        builder: (ctx) {
+          final theme = Theme.of(ctx);
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    isArabic ? 'اختر لغة التلخيص الأكاديمي' : 'Select Summary Language',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    isArabic
+                        ? 'سيتم تفريغ الصوت بنصه الأصلي وتوليد الملخص باللغة المختارة'
+                        : 'Audio will be transcribed verbatim and summarized in chosen language',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 16),
+                  ListTile(
+                    leading: const Icon(Icons.language),
+                    title: const Text('العربية (Arabic)'),
+                    subtitle: Text(isArabic ? 'ملخص أكاديمي باللغة العربية' : 'Academic summary in Arabic'),
+                    onTap: () => Navigator.of(ctx).pop('ar'),
+                    tileColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  const SizedBox(height: 8),
+                  ListTile(
+                    leading: const Icon(Icons.translate),
+                    title: const Text('English (الإنجليزية)'),
+                    subtitle: Text(isArabic ? 'ملخص أكاديمي باللغة الإنجليزية' : 'Academic summary in English'),
+                    onTap: () => Navigator.of(ctx).pop('en'),
+                    tileColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+
+      if (langResult != null) {
+        chosenLanguage = langResult;
+      }
+      if (!mounted) return;
+
       provider.prepareForImportProcessing();
       navigator.push(
         MaterialPageRoute(
@@ -162,6 +222,7 @@ class _HomeScreenState extends State<HomeScreen> {
         await provider.processCompressedImport(
           audioPath: compressed.path,
           fileName: picked.fileName,
+          summaryLanguage: chosenLanguage,
         );
       } catch (_) {
         // Handled and displayed inside ProcessingScreen via provider.errorMessage

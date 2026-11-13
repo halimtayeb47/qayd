@@ -164,6 +164,7 @@ class Qayd {
   final QaydSummary? summary;
   final QaydStatus status;
   final String? folderId;
+  final String summaryLanguage;
 
   const Qayd({
     required this.id,
@@ -177,6 +178,7 @@ class Qayd {
     this.summary,
     this.status = QaydStatus.done,
     this.folderId,
+    this.summaryLanguage = 'en',
   });
 
   /// Creates a copy of this Qayd with updated fields (immutability helper).
@@ -194,6 +196,7 @@ class Qayd {
     QaydStatus? status,
     String? folderId,
     bool clearFolderId = false,
+    String? summaryLanguage,
   }) {
     return Qayd(
       id: id ?? this.id,
@@ -207,6 +210,7 @@ class Qayd {
       summary: summary ?? this.summary,
       status: status ?? this.status,
       folderId: clearFolderId ? null : (folderId ?? this.folderId),
+      summaryLanguage: summaryLanguage ?? this.summaryLanguage,
     );
   }
 
@@ -223,6 +227,7 @@ class Qayd {
       'summary': summary?.toMap(),
       'status': status.name,
       'folderId': folderId,
+      'summaryLanguage': summaryLanguage,
     };
   }
 
@@ -253,6 +258,7 @@ class Qayd {
         orElse: () => QaydStatus.done,
       ),
       folderId: map['folderId'] as String?,
+      summaryLanguage: map['summaryLanguage'] as String? ?? 'en',
     );
   }
 }

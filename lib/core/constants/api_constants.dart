@@ -23,10 +23,18 @@ class ApiConstants {
 
   static const String groqModel = 'whisper-large-v3';
 
-  /// The validated code-switching prompt that enforces English technical terms
-  /// inside Arabic speech without unwanted translations.
+  /// Bilingual technical vocabulary glossary prompt for Whisper.
+  /// Intentionally contains ZERO instructional phrases ("Transcribe...", "Translate...", etc.)
+  /// so Whisper never echoes instructions or gets tricked into translation mode.
   static const String groqPrompt =
-      'Transcribe verbatim without translation. Maintain strict code-switching between Arabic and English. Transcribe Arabic speech in Arabic script and all technical terms, programming concepts, and spoken English words in standard English Latin script: API, database, backend, frontend, server, client, request, response, array, loop, function, class, object, architecture, framework.';
+      'محاضرة وشرح، السلام عليكم، أهلاً بكم. '
+      'API, database, backend, frontend, server, client, request, response, '
+      'array, loop, function, class, object, architecture, framework, '
+      'thread, process, memory, cache, CPU, algorithm, debug, data, network.';
+
+  /// Backward-compatible aliases
+  static const String groqArabicPrompt = groqPrompt;
+  static const String groqEnglishPrompt = groqPrompt;
   // ---------------------------------------------------------------------------
   // Google Gemini API (Academic Summarization)
   // ---------------------------------------------------------------------------

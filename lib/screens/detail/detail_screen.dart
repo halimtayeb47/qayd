@@ -12,6 +12,7 @@ import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:provider/provider.dart';
 import '../../data/models/qayd_model.dart';
+import '../../data/services/pdf_export_service.dart';
 import '../../providers/qayd_provider.dart';
 import '../../widgets/qayd_actions.dart';
 
@@ -144,9 +145,24 @@ class _DetailScreenState extends State<DetailScreen>
           overflow: TextOverflow.ellipsis,
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.picture_as_pdf_outlined),
+            tooltip: isArabic ? 'تصدير PDF' : 'Export PDF',
+            onPressed: () => _showPdfExportSheet(context, qayd, isArabic),
+          ),
           PopupMenuButton<String>(
             onSelected: (value) => _handleMenuAction(value, qayd),
             itemBuilder: (context) => [
+              PopupMenuItem(
+                value: 'export_pdf',
+                child: Row(
+                  children: [
+                    const Icon(Icons.picture_as_pdf, size: 20),
+                    const SizedBox(width: 10),
+                    Text(isArabic ? 'تصدير PDF' : 'Export PDF'),
+                  ],
+                ),
+              ),
               PopupMenuItem(
                 value: 'rename',
                 child: Row(
@@ -389,11 +405,83 @@ class _DetailScreenState extends State<DetailScreen>
       );
     }
 
+    final isSummaryArabic = qayd.summaryLanguage == 'ar';
+
     return Directionality(
-      textDirection: TextDirection.ltr,
+      textDirection: isSummaryArabic ? TextDirection.rtl : TextDirection.ltr,
       child: ListView(
         padding: const EdgeInsets.all(16.0),
         children: [
+          // Summary Language Indicator & Switcher Bar
+          Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerLow,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: theme.colorScheme.outlineVariant),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.translate,
+                        size: 16,
+                        color: theme.colorScheme.primary,
+                      ),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          isArabic ? 'لغة الملخص:' : 'Summary Language:',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                SegmentedButton<String>(
+                  showSelectedIcon: false,
+                  segments: const [
+                    ButtonSegment(
+                      value: 'ar',
+                      label: Text('العربية'),
+                    ),
+                    ButtonSegment(
+                      value: 'en',
+                      label: Text('English'),
+                    ),
+                  ],
+                  selected: {qayd.summaryLanguage},
+                  onSelectionChanged: isGenerating
+                      ? null
+                      : (newSelection) {
+                          final selected = newSelection.first;
+                          if (selected != qayd.summaryLanguage) {
+                            _confirmRegenerateLanguage(
+                              context,
+                              qayd,
+                              selected,
+                              isArabic,
+                            );
+                          }
+                        },
+                  style: SegmentedButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
           // Overview Card
           Card(
             child: Padding(
@@ -408,7 +496,7 @@ class _DetailScreenState extends State<DetailScreen>
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          'Overview',
+                          isSummaryArabic ? 'النظرة العامة' : 'Overview',
                           style: theme.textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.bold,
                           ),
@@ -452,7 +540,7 @@ class _DetailScreenState extends State<DetailScreen>
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          'Topic Breakdown',
+                          isSummaryArabic ? 'المحاور والموضوعات' : 'Topic Breakdown',
                           style: theme.textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.bold,
                           ),
@@ -572,7 +660,9 @@ class _DetailScreenState extends State<DetailScreen>
                             color: theme.colorScheme.secondary, size: 20),
                         const SizedBox(width: 8),
                         Text(
-                          'Key Points & Takeaways',
+                          isSummaryArabic
+                              ? 'أهم النقاط المستفادة'
+                              : 'Key Points & Takeaways',
                           style: theme.textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.bold,
                           ),
@@ -630,7 +720,9 @@ class _DetailScreenState extends State<DetailScreen>
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          'Key Terminology',
+                          isSummaryArabic
+                              ? 'المصطلحات والمفاهيم العلمية'
+                              : 'Key Terminology',
                           style: theme.textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.bold,
                           ),
@@ -889,10 +981,13 @@ class _DetailScreenState extends State<DetailScreen>
   }
 
   // ---------------------------------------------------------------------------
-  // Action Handlers (Rename, Move, Edit, Delete)
+  // Action Handlers (Export PDF, Rename, Move, Edit, Delete)
   // ---------------------------------------------------------------------------
   void _handleMenuAction(String action, Qayd qayd) {
-    if (action == 'rename') {
+    if (action == 'export_pdf') {
+      final isArabic = Localizations.localeOf(context).languageCode == 'ar';
+      _showPdfExportSheet(context, qayd, isArabic);
+    } else if (action == 'rename') {
       showRenameQaydDialog(context, qayd);
     } else if (action == 'edit_transcript') {
       showEditTranscriptDialog(context, qayd);
@@ -917,5 +1012,216 @@ class _DetailScreenState extends State<DetailScreen>
         },
       );
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // PDF Export Sheet & Handler (FR-PDF)
+  // ---------------------------------------------------------------------------
+  void _showPdfExportSheet(BuildContext context, Qayd qayd, bool isArabic) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                isArabic ? 'تصدير مستند PDF' : 'Export PDF Document',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+              const SizedBox(height: 14),
+
+              // 1. Academic Summary PDF
+              ListTile(
+                leading: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0D9488),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.auto_awesome, color: Colors.white, size: 20),
+                ),
+                title: Text(
+                  isArabic ? 'تصدير الملخص الأكاديمي' : 'Export Academic Summary',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                subtitle: Text(
+                  isArabic
+                      ? 'مذكرة دراسية تشمل النظرة العامة والمحاور والنقاط والمصطلحات'
+                      : 'Overview, topic breakdown, takeaways, and key terms',
+                ),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _exportPdf(qayd, PdfExportType.summary, isArabic);
+                },
+              ),
+
+              // 2. Full Transcript PDF
+              ListTile(
+                leading: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E293B),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.subtitles, color: Colors.white, size: 20),
+                ),
+                title: Text(
+                  isArabic ? 'تصدير التفريغ الصوتي الكامل' : 'Export Full Transcript',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                subtitle: Text(
+                  isArabic
+                      ? 'النص الكامل للمحاضرة مرمزاً بالطوابع الزمنية الدقيقة'
+                      : 'Verbatim transcript with timestamped segments [MM:SS]',
+                ),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _exportPdf(qayd, PdfExportType.transcript, isArabic);
+                },
+              ),
+
+              // 3. Complete Lecture Notes PDF
+              ListTile(
+                leading: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF4F46E5),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.menu_book, color: Colors.white, size: 20),
+                ),
+                title: Text(
+                  isArabic ? 'تصدير المذكرة الشاملة' : 'Export Complete Lecture Notes',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                subtitle: Text(
+                  isArabic
+                      ? 'ملف جامع يضم كلاً من الملخص الأكاديمي والتفريغ الصوتي'
+                      : 'Comprehensive bundle including both Summary & Transcript',
+                ),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _exportPdf(qayd, PdfExportType.full, isArabic);
+                },
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _exportPdf(
+    Qayd qayd,
+    PdfExportType type,
+    bool isArabic,
+  ) async {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Text(isArabic ? 'جاري إعداد مستند الـ PDF...' : 'Preparing PDF document...'),
+          ],
+        ),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+
+    try {
+      final safeTitle = qayd.title.replaceAll(RegExp(r'[^\w\s\u0600-\u06FF-]'), '_');
+      Uint8List bytes;
+      String filename;
+
+      switch (type) {
+        case PdfExportType.summary:
+          bytes = await PdfExportService.generateSummaryPdf(qayd);
+          filename = 'Qayd_Summary_$safeTitle.pdf';
+          break;
+        case PdfExportType.transcript:
+          bytes = await PdfExportService.generateTranscriptPdf(qayd);
+          filename = 'Qayd_Transcript_$safeTitle.pdf';
+          break;
+        case PdfExportType.full:
+          bytes = await PdfExportService.generateFullLecturePdf(qayd);
+          filename = 'Qayd_Complete_$safeTitle.pdf';
+          break;
+      }
+
+      await PdfExportService.sharePdf(
+        bytes: bytes,
+        filename: filename,
+        subject: qayd.title,
+      );
+    } catch (e) {
+      if (mounted) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(
+              isArabic
+                  ? 'فشل تصدير ملف الـ PDF: $e'
+                  : 'Failed to export PDF: $e',
+            ),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
+    }
+  }
+
+  void _confirmRegenerateLanguage(
+    BuildContext context,
+    Qayd qayd,
+    String targetLang,
+    bool isArabic,
+  ) {
+    final provider = context.read<QaydProvider>();
+    final targetName = targetLang == 'ar' ? 'العربية' : 'English';
+
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(
+          isArabic ? 'تغيير لغة الملخص الأكاديمي' : 'Switch Summary Language',
+        ),
+        content: Text(
+          isArabic
+              ? 'هل ترغب في إعادة توليد الملخص الأكاديمي باللغة ($targetName) بواسطة ذكاء Gemini الاصطناعي؟'
+              : 'Would you like to regenerate the academic summary in $targetName using Gemini AI?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(isArabic ? 'إلغاء' : 'Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              provider.regenerateSummaryWithLanguage(qayd.id, targetLang);
+            },
+            child: Text(isArabic ? 'توليد' : 'Generate'),
+          ),
+        ],
+      ),
+    );
   }
 }

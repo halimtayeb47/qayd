@@ -82,6 +82,7 @@ class FakeSuccessWhisperService extends GroqWhisperService {
   Future<TranscriptionResult> transcribeAudio({
     required String audioFilePath,
     String? customApiKey,
+    String? audioLanguage = 'ar',
     void Function(int count, int total)? onSendProgress,
   }) async {
     return const TranscriptionResult(
@@ -107,14 +108,17 @@ class FakeValidRecordingService extends AudioRecordingService {
 class FakeFlakyGeminiService extends GeminiSummaryService {
   bool shouldFail = true;
   List<TranscriptSegment> lastReceivedSegments = const [];
+  String lastReceivedLanguage = 'en';
 
   @override
   Future<QaydSummary> generateSummary({
     required String transcript,
     List<TranscriptSegment> segments = const [],
+    String summaryLanguage = 'en',
     String? customApiKey,
   }) async {
     lastReceivedSegments = segments;
+    lastReceivedLanguage = summaryLanguage;
     if (shouldFail) {
       throw Exception('Simulated Gemini 429');
     }
