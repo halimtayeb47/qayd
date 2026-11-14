@@ -4,6 +4,8 @@
 
 **Qayd** is an AI-powered, local-first mobile application built with Flutter for university students at the Islamic University of Madinah (Faculty of Computer Science & Information Technology). It bridges the linguistic and cognitive gap in bilingual university lectures by transforming recorded or imported classroom audio into accurate transcripts and structured academic study notes.
 
+**Supported platforms:** Android, iOS, and Web.
+
 ---
 
 ## 🚀 Core Features (MVP)
